@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Controller Lab — Calibración Asistida SQLite</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --panel-bg: rgba(14, 18, 27, 0.85);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --panel-border-hover: rgba(0, 242, 254, 0.35);
+      --card-bg: rgba(20, 26, 40, 0.7);
+      
+      --accent-cyan: #00f2fe;
+      --accent-blue: #4facfe;
+      --accent-purple: #7f00ff;
+      --accent-pink: #f107a3;
+      --accent-emerald: #00f5a0;
+      --accent-amber: #ffb703;
+      --accent-coral: #ff5e62;
+      
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #4b5563;
+      
+      --glow-cyan: 0 0 25px rgba(0, 242, 254, 0.35);
+      --glow-emerald: 0 0 25px rgba(0, 245, 160, 0.35);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-dark); color: var(--text-main); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; }
+
+    .top-bar {
+      position: absolute; top: 16px; left: 16px; right: 16px; height: 60px;
+      display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 20;
+    }
+
+    .brand-title { display: flex; align-items: center; gap: 12px; font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 700; }
+    .brand-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--accent-emerald), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; color: #07090e; font-weight: 800; font-size: 16px; }
+
+    .glass-panel {
+      background: var(--panel-bg); backdrop-filter: blur(20px) saturate(160%); border: 1px solid var(--panel-border);
+      border-radius: 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Layout principal dividido en 2 columnas */
+    .main-layout {
+      position: absolute; top: 90px; left: 16px; right: 16px; bottom: 16px;
+      display: grid; grid-template-columns: 380px 1fr 340px; gap: 16px; z-index: 10;
+    }
+
+    /* Columna Izquierda: Asistente Paso a Paso */
+    .step-column {
+      display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 18px;
+    }
+    .step-column::-webkit-scrollbar, .device-column::-webkit-scrollbar { width: 4px; }
+    .step-column::-webkit-scrollbar-thumb, .device-column::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+    .step-card {
+      background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px;
+      display: flex; flex-direction: column; gap: 10px; transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .step-card.active { border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); }
+    .step-card.completed { border-color: var(--accent-emerald); }
+
+    .step-header { display: flex; align-items: center; justify-content: space-between; }
+    .step-badge {
+      width: 24px; height: 24px; border-radius: 50%; background: rgba(255, 255, 255, 0.1);
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;
+    }
+    .step-card.active .step-badge { background: var(--accent-cyan); color: #07090e; }
+    .step-card.completed .step-badge { background: var(--accent-emerald); color: #07090e; }
+
+    .step-title { font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 700; }
+    .step-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+    /* Barra de progreso de cobertura */
+    .progress-bar-container { width: 100%; height: 10px; background: rgba(255, 255, 255, 0.08); border-radius: 5px; overflow: hidden; position: relative; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald)); transition: width 0.15s ease; }
+
+    .btn-action {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); color: #07090e; font-family: 'Outfit', sans-serif;
+      font-weight: 700; font-size: 12px; border: none; border-radius: 8px; padding: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;
+    }
+    .btn-action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--glow-cyan); }
+    .btn-action:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-action.btn-save { background: linear-gradient(135deg, var(--accent-emerald), #00d2ff); box-shadow: var(--glow-emerald); }
+
+    /* Columna Central: Visualizador 3D de la Esfera de Cobertura */
+    .viewport-column {
+      position: relative; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    #sphere-canvas { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    .viewport-overlay-ui {
+      position: absolute; top: 16px; left: 16px; right: 16px; pointer-events: none;
+      display: flex; justify-content: space-between; z-index: 5;
+    }
+    .overlay-badge {
+      background: rgba(14, 18, 27, 0.85); backdrop-filter: blur(12px); border: 1px solid var(--panel-border);
+      border-radius: 8px; padding: 8px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    }
+
+    /* Columna Derecha: Parámetros Estimados & Periféricos en SQLite */
+    .device-column {
+      display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 18px;
+    }
+
+    .param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .param-card { background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 8px; text-align: center; }
+    .param-name { font-size: 9px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
+    .param-val { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--accent-cyan); margin-top: 2px; }
+
+    .device-item {
+      background: rgba(255, 255, 255, 0.03); border: 1px solid var(--panel-border); border-radius: 8px;
+      padding: 10px; display: flex; flex-direction: column; gap: 6px; position: relative;
+    }
+    .device-item:hover { border-color: rgba(0, 242, 254, 0.4); }
+    .device-mac { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 12px; color: #fff; }
+    .device-meta { font-size: 10px; color: var(--text-muted); display: flex; justify-content: space-between; }
+    .btn-del { position: absolute; top: 8px; right: 8px; background: transparent; border: none; color: var(--accent-coral); cursor: pointer; font-size: 11px; }
+
+    #toast {
+      position: absolute; top: 86px; left: 50%; transform: translateX(-50%) translateY(-20px);
+      background: rgba(14, 18, 27, 0.95); border: 1px solid var(--accent-emerald); color: #fff;
+      padding: 8px 20px; border-radius: 30px; font-size: 12px; font-weight: 700; box-shadow: var(--glow-emerald);
+      opacity: 0; pointer-events: none; transition: all 0.3s ease; z-index: 100;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="toast">Calibración guardada exitosamente en SQLite</div>
+
+  <!-- Barra Superior -->
+  <header class="top-bar glass-panel">
+    <div class="brand-title">
+      <div class="brand-icon">✓</div>
+      <div>
+        <span>Motion Controller Lab</span>
+        <span style="font-size:10px; color:var(--accent-emerald); font-family:'JetBrains Mono'; margin-left:8px;">CALIBRACIÓN ASISTIDA SQLITE</span>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="ws-badge" class="overlay-badge" style="color:var(--accent-coral);">WS: Desconectado</span>
+      <span id="active-dev-badge" class="overlay-badge" style="color:var(--accent-cyan);">DISPOSITIVO: --</span>
+      <a href="visualizer3d.html" style="color:var(--text-muted); text-decoration:none; font-size:11px; padding:6px 12px; border:1px solid var(--panel-border); border-radius:8px;">Volver al Visualizador 3D ➔</a>
+    </div>
+  </header>
+
+  <!-- Layout Principal -->
+  <main class="main-layout">
+    <!-- Columna 1: Asistente Paso a Paso -->
+    <section class="step-column glass-panel">
+      <!-- Paso 1 -->
+      <div id="card-step-1" class="step-card active">
+        <div class="step-header">
+          <span class="step-title">Paso 1: Giróscopo y Reposo</span>
+          <span class="step-badge">1</span>
+        </div>
+        <p class="step-desc">Coloca el controlador inmóvil sobre una mesa plana durante 3 segundos para capturar el sesgo de reposo (bias cero).</p>
+        <button id="btn-start-gyro" class="btn-action">Iniciar Calibración de Reposo</button>
+        <div class="progress-bar-container"><div id="gyro-progress" class="progress-bar-fill"></div></div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div id="card-step-2" class="step-card">
+        <div class="step-header">
+          <span class="step-title">Paso 2: Magnetómetro 3D</span>
+          <span class="step-badge">2</span>
+        </div>
+        <p class="step-desc">Toma el sensor y realiza movimientos lentos en <b>ocho (figura 8)</b> rotándolo en todos sus ejes para cubrir la esfera 3D.</p>
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted);">
+          <span>Cobertura de la Esfera</span>
+          <span id="coverage-txt" style="color:var(--accent-cyan); font-weight:700;">0.0%</span>
+        </div>
+        <div class="progress-bar-container"><div id="mag-progress" class="progress-bar-fill"></div></div>
+      </div>
+
+      <!-- Paso 3: Orientación de Montaje -->
+      <div id="card-step-3" class="step-card">
+        <div class="step-header">
+          <span class="step-title">Paso 3: Orientación de Montaje</span>
+          <span class="step-badge">3</span>
+        </div>
+        <p class="step-desc">Alinea el sistema de coordenadas si la IMU está rotada en tu protoboard o carcasa.</p>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px;">
+          <button id="btn-cal-mount-0" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">0° Normal</button>
+          <button id="btn-cal-mount-90" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">+90° Yaw</button>
+          <button id="btn-cal-mount-minus90" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">-90° Yaw</button>
+          <button id="btn-cal-mount-180" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">180° Invert.</button>
+          <button id="btn-cal-mount-roll90" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">+90° Roll</button>
+          <button id="btn-cal-mount-pitch90" class="btn-action" style="font-size:10px; padding:6px; background:rgba(255,255,255,0.08); color:#fff;">+90° Pitch</button>
+        </div>
+        <!-- Campos numéricos para los 3 ejes -->
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin-top:8px;">
+          <div>
+            <span style="font-size:10px; color:var(--text-muted);">Yaw (Z):</span>
+            <input id="input-mount-yaw" type="number" value="0" min="-180" max="180" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-cyan); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+          </div>
+          <div>
+            <span style="font-size:10px; color:var(--text-muted);">Pitch (Y):</span>
+            <input id="input-mount-pitch" type="number" value="0" min="-90" max="90" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-amber); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+          </div>
+          <div>
+            <span style="font-size:10px; color:var(--text-muted);">Roll (X):</span>
+            <input id="input-mount-roll" type="number" value="0" min="-180" max="180" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-emerald); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+          </div>
+        </div>
+        <button id="btn-auto-detect-mount" class="btn-action" style="background:linear-gradient(135deg, var(--accent-purple), var(--accent-blue)); color:#fff; margin-top:8px;">
+          🎯 Detección Automática 3D (Yaw, Pitch, Roll)
+        </button>
+        <div id="auto-detect-panel" style="display:none; flex-direction:column; gap:8px; margin-top:8px; padding:10px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(127,0,255,0.3);">
+          <div id="detect-step-msg" style="font-size:11px; font-weight:600; color:var(--accent-cyan); line-height:1.3;">
+            Paso 1: Coloca el control plano sobre la mesa...
+          </div>
+          <div class="progress-bar-container"><div id="detect-progress-bar" class="progress-bar-fill" style="background:linear-gradient(90deg, var(--accent-purple), var(--accent-cyan)); width:0%;"></div></div>
+          <div id="detect-result" style="font-size:11px; font-family:'JetBrains Mono'; color:var(--accent-emerald); font-weight:700;"></div>
+        </div>
+      </div>
+
+      <!-- Paso 4 -->
+      <div id="card-step-4" class="step-card">
+        <div class="step-header">
+          <span class="step-title">Paso 4: Guardar e Inyectar vía BLE</span>
+          <span class="step-badge">4</span>
+        </div>
+        <p class="step-desc">Guarda permanentemente en SQLite e inyecta la calibración y montaje directamente a la memoria del ESP32 por BLE.</p>
+        <button id="btn-save-db" class="btn-action btn-save" disabled>💾 Guardar en SQLite e Inyectar</button>
+        <button id="btn-sim-mag" style="background:transparent; border:1px dashed rgba(255,255,255,0.15); color:var(--text-muted); font-size:10px; padding:6px; border-radius:6px; cursor:pointer;">
+          Modo Demo (Simular Cobertura Rápida)
+        </button>
+      </div>
+    </section>
+
+    <!-- Columna 2: Visualizador 3D de Cobertura Esférica -->
+    <section class="viewport-column glass-panel">
+      <div id="sphere-container" style="width:100%; height:100%; position:relative;"></div>
+      <div class="viewport-overlay-ui">
+        <div class="overlay-badge">
+          <span>Puntos Muestreados: </span><span id="points-count" style="color:#fff; font-weight:700;">0</span>
+        </div>
+        <div class="overlay-badge">
+          <span>Calidad de Mapeo: </span><span id="quality-lbl" style="color:var(--accent-amber); font-weight:700;">INSUFICIENTE</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Columna 3: Parámetros y Base de Datos -->
+    <section class="device-column glass-panel">
+      <div style="font-family:'Outfit'; font-size:0.85rem; font-weight:700; color:var(--accent-cyan); text-transform:uppercase;">
+        Parámetros Calculados (µT)
+      </div>
+      <div class="param-grid">
+        <div class="param-card"><div class="param-name">Offset X (Hard-Iron)</div><div id="p-off-x" class="param-val">0.00</div></div>
+        <div class="param-card"><div class="param-name">Offset Y (Hard-Iron)</div><div id="p-off-y" class="param-val">0.00</div></div>
+        <div class="param-card"><div class="param-name">Offset Z (Hard-Iron)</div><div id="p-off-z" class="param-val">0.00</div></div>
+        <div class="param-card"><div class="param-name">Radio Medio (R)</div><div id="p-radius" class="param-val">0.00</div></div>
+        <div class="param-card"><div class="param-name">Escala X (Soft-Iron)</div><div id="p-sc-x" class="param-val">1.000</div></div>
+        <div class="param-card"><div class="param-name">Escala Y (Soft-Iron)</div><div id="p-sc-y" class="param-val">1.000</div></div>
+      </div>
+
+      <div style="font-family:'Outfit'; font-size:0.85rem; font-weight:700; color:var(--accent-emerald); text-transform:uppercase; margin-top:10px;">
+        Periféricos en SQLite
+      </div>
+      <div id="device-list" style="display:flex; flex-direction:column; gap:8px;">
+        <span style="font-size:11px; color:var(--text-muted); font-style:italic;">Cargando base de datos...</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. THREE.JS SPHERE COVERAGE VISUALIZER
+    // =========================================================================
+    const container = document.getElementById('sphere-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(0, 0, 3.8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Esfera alámbrica de referencia
+    const sphereGeo = new THREE.SphereGeometry(1.2, 24, 24);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, wireframe: true, transparent: true, opacity: 0.15 });
+    const wireSphere = new THREE.Mesh(sphereGeo, sphereMat);
+    scene.add(wireSphere);
+
+    // Ejes de referencia centrados
+    const axes = new THREE.AxesHelper(1.6);
+    scene.add(axes);
+
+    // Nube de puntos de muestras magnéticas
+    const MAX_POINTS = 3000;
+    const pointPositions = new Float32Array(MAX_POINTS * 3);
+    const pointColors = new Float32Array(MAX_POINTS * 3);
+    const pointGeo = new THREE.BufferGeometry();
+    pointGeo.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
+    pointGeo.setAttribute('color', new THREE.BufferAttribute(pointColors, 3));
+
+    const pointMat = new THREE.PointsMaterial({
+      size: 0.045,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85
+    });
+    const pointCloud = new THREE.Points(pointGeo, pointMat);
+    scene.add(pointCloud);
+
+    // =========================================================================
+    // 2. MATEMÁTICAS DE CALIBRACIÓN HARD-IRON & SOFT-IRON
+    // =========================================================================
+    let sampleCount = 0;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    let offsetX = 0, offsetY = 0, offsetZ = 0;
+    let scaleX = 1, scaleY = 1, scaleZ = 1;
+    let coveragePct = 0;
+
+    // Matriz de sectores esféricos (16 azimut x 8 elevación = 128 sectores)
+    const sectors = new Uint8Array(128);
+
+    function recordMagSample(x, y, z) {
+      if (!isFinite(x) || !isFinite(y) || !isFinite(z)) return;
+
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+
+      offsetX = (maxX + minX) * 0.5;
+      offsetY = (maxY + minY) * 0.5;
+      offsetZ = (maxZ + minZ) * 0.5;
+
+      const rx = (maxX - minX) * 0.5;
+      const ry = (maxY - minY) * 0.5;
+      const rz = (maxZ - minZ) * 0.5;
+      const avgR = (rx + ry + rz) / 3.0;
+
+      if (rx > 1.0 && ry > 1.0 && rz > 1.0) {
+        scaleX = avgR / rx;
+        scaleY = avgR / ry;
+        scaleZ = avgR / rz;
+      }
+
+      // Marcar sector esférico para calcular cobertura real
+      const normVec = new THREE.Vector3(x - offsetX, y - offsetY, z - offsetZ).normalize();
+      const az = (Math.atan2(normVec.y, normVec.x) + Math.PI) / (Math.PI * 2); // 0 a 1
+      const el = (Math.asin(THREE.MathUtils.clamp(normVec.z, -1, 1)) + Math.PI / 2) / Math.PI; // 0 a 1
+      const sIdx = Math.floor(az * 16) * 8 + Math.floor(el * 8);
+      sectors[sIdx] = 1;
+
+      let covered = 0;
+      for (let i = 0; i < 128; i++) if (sectors[i]) covered++;
+      coveragePct = (covered / 128.0) * 100.0;
+
+      // Añadir punto a la nube 3D
+      const idx = (sampleCount % MAX_POINTS) * 3;
+      pointPositions[idx] = normVec.x * 1.2;
+      pointPositions[idx + 1] = normVec.y * 1.2;
+      pointPositions[idx + 2] = normVec.z * 1.2;
+
+      // Color degradado cyan -> esmeralda
+      pointColors[idx] = 0.0;
+      pointColors[idx + 1] = 0.95;
+      pointColors[idx + 2] = 0.65;
+
+      sampleCount++;
+      pointGeo.attributes.position.needsUpdate = true;
+      pointGeo.attributes.color.needsUpdate = true;
+
+      updateUI(avgR);
+    }
+
+    function updateUI(avgR) {
+      document.getElementById('points-count').textContent = sampleCount;
+      document.getElementById('coverage-txt').textContent = `${coveragePct.toFixed(1)}%`;
+      document.getElementById('mag-progress').style.width = `${coveragePct}%`;
+
+      document.getElementById('p-off-x').textContent = offsetX.toFixed(2);
+      document.getElementById('p-off-y').textContent = offsetY.toFixed(2);
+      document.getElementById('p-off-z').textContent = offsetZ.toFixed(2);
+      document.getElementById('p-radius').textContent = (avgR || 0).toFixed(2);
+      document.getElementById('p-sc-x').textContent = scaleX.toFixed(3);
+      document.getElementById('p-sc-y').textContent = scaleY.toFixed(3);
+
+      const qLbl = document.getElementById('quality-lbl');
+      const btnSave = document.getElementById('btn-save-db');
+      if (coveragePct >= 75.0) {
+        qLbl.textContent = 'EXCELENTE (LISTO)';
+        qLbl.style.color = 'var(--accent-emerald)';
+        btnSave.disabled = false;
+        document.getElementById('card-step-2').classList.add('completed');
+        document.getElementById('card-step-3').classList.add('active');
+      } else if (coveragePct >= 40.0) {
+        qLbl.textContent = 'PARCIAL (GIRA MÁS)';
+        qLbl.style.color = 'var(--accent-amber)';
+        btnSave.disabled = true;
+      } else {
+        qLbl.textContent = 'INSUFICIENTE';
+        qLbl.style.color = 'var(--accent-coral)';
+        btnSave.disabled = true;
+      }
+    }
+
+    // =========================================================================
+    // 3. COMUNICACIÓN WEBSOCKET BIDIRECCIONAL CON EL GATEWAY
+    // =========================================================================
+    const WS_URL = "ws://127.0.0.1:8765";
+    let ws = null;
+    let currentDeviceId = "MCL-0001";
+
+    function connectWS() {
+      ws = new WebSocket(WS_URL);
+      const wsBadge = document.getElementById('ws-badge');
+
+      ws.onopen = () => {
+        wsBadge.textContent = "WS: Conectado (RPC Listo)";
+        wsBadge.style.color = "var(--accent-emerald)";
+        // Solicitar lista de calibraciones guardadas en SQLite
+        requestCalibrationsList();
+      };
+
+      ws.onclose = () => {
+        wsBadge.textContent = "WS: Desconectado";
+        wsBadge.style.color = "var(--accent-coral)";
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "telemetry") {
+            handleTelemetry(msg);
+          } else if (msg.type === "status") {
+            handleStatus(msg);
+          } else if (msg.type === "calibration_list") {
+            renderDeviceList(msg.devices || []);
+          } else if (msg.type === "save_calibration_ack") {
+            showToast("✓ Calibración guardada permanentemente en SQLite");
+            requestCalibrationsList();
+          }
+        } catch (e) {}
+      };
+    }
+
+    let lastQuat = new THREE.Quaternion(0, 0, 0, 1);
+
+    function handleTelemetry(data) {
+      // Guardar último cuaternión para detección automática de orientación
+      if (data.quaternion) {
+        lastQuat.set(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w);
+      }
+      // Reconstruir vector magnético usando orientación relativa
+      const q = data.quaternion;
+      if (q) {
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(new THREE.Quaternion(q.x, q.y, q.z, q.w));
+        // Magnitud típica de campo terrestre ~45 uT
+        recordMagSample(dir.x * 45.0, dir.y * 45.0, dir.z * 45.0);
+      }
+    }
+
+    function handleStatus(data) {
+      if (data.device_id) {
+        currentDeviceId = data.device_id;
+        document.getElementById('active-dev-badge').textContent = `DISPOSITIVO: ${data.device_id}`;
+      }
+    }
+
+    function requestCalibrationsList() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ command: "list_calibrations" }));
+      }
+    }
+
+    function saveCalibrationToSQLite() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("El WebSocket no está conectado con el Gateway.");
+        return;
+      }
+      const mountYaw = parseFloat(document.getElementById('input-mount-yaw').value || 0);
+      const mountPitch = parseFloat(document.getElementById('input-mount-pitch').value || 0);
+      const mountRoll = parseFloat(document.getElementById('input-mount-roll').value || 0);
+      const payload = {
+        command: "save_calibration",
+        device_id: currentDeviceId,
+        calibration: {
+          device_name: currentDeviceId,
+          mount_yaw_deg: mountYaw,
+          mount_pitch_deg: mountPitch,
+          mount_roll_deg: mountRoll,
+          mag_offset_x: offsetX,
+          mag_offset_y: offsetY,
+          mag_offset_z: offsetZ,
+          mag_scale_x: scaleX,
+          mag_scale_y: scaleY,
+          mag_scale_z: scaleZ,
+          mag_span_x: maxX - minX,
+          mag_span_y: maxY - minY,
+          mag_span_z: maxZ - minZ,
+          mag_coverage_pct: coveragePct,
+          is_valid: true,
+          notes: `Calibrado 3D (Montaje: Yaw=${mountYaw}°, Pitch=${mountPitch}°, Roll=${mountRoll}°) el ${new Date().toLocaleDateString()}`
+        }
+      };
+      ws.send(JSON.stringify(payload));
+    }
+
+    function deleteCalibration(devId) {
+      if (confirm(`¿Eliminar la calibración guardada para el dispositivo '${devId}'?`)) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ command: "delete_calibration", device_id: devId }));
+          setTimeout(requestCalibrationsList, 250);
+        }
+      }
+    }
+
+    function renderDeviceList(devices) {
+      const listEl = document.getElementById('device-list');
+      if (!devices || devices.length === 0) {
+        listEl.innerHTML = '<span style="font-size:11px; color:var(--text-muted); font-style:italic;">No hay dispositivos calibrados aún en SQLite.</span>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      devices.forEach(d => {
+        const item = document.createElement('div');
+        item.className = 'device-item';
+        const dateStr = d.updated_at ? new Date(d.updated_at).toLocaleString() : 'N/A';
+        const mountStr = `Y:${d.mount_yaw_deg || 0}° P:${d.mount_pitch_deg || 0}° R:${d.mount_roll_deg || 0}°`;
+        item.innerHTML = `
+          <button class="btn-del" onclick="deleteCalibration('${d.device_id}')">✕ Borrar</button>
+          <div class="device-mac">${d.device_id}</div>
+          <div class="device-meta">
+            <span>Cobertura: <b style="color:var(--accent-emerald);">${d.mag_coverage_pct.toFixed(1)}%</b></span>
+            <span>Montaje: <b style="color:var(--accent-cyan);">${mountStr}</b></span>
+          </div>
+          <div style="font-size:9px; color:var(--text-dim); font-family:'JetBrains Mono';">
+            Offset: (${d.mag_offset_x.toFixed(1)}, ${d.mag_offset_y.toFixed(1)}, ${d.mag_offset_z.toFixed(1)}) µT
+          </div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    // =========================================================================
+    // 4. INTERACTIVIDAD & BOTONES
+    // =========================================================================
+    document.getElementById('btn-save-db').addEventListener('click', saveCalibrationToSQLite);
+
+    // Botones presets de montaje
+    function setCalMount(yaw, pitch = 0, roll = 0) {
+      document.getElementById('input-mount-yaw').value = yaw;
+      document.getElementById('input-mount-pitch').value = pitch;
+      document.getElementById('input-mount-roll').value = roll;
+      ['btn-cal-mount-0', 'btn-cal-mount-90', 'btn-cal-mount-minus90', 'btn-cal-mount-180', 'btn-cal-mount-roll90', 'btn-cal-mount-pitch90'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.style.background = 'rgba(255,255,255,0.08)';
+          el.style.borderColor = 'transparent';
+        }
+      });
+      showToast(`Montaje seleccionado: Yaw=${yaw}°, Pitch=${pitch}°, Roll=${roll}°`);
+    }
+
+    document.getElementById('btn-cal-mount-0').addEventListener('click', () => setCalMount(0, 0, 0));
+    document.getElementById('btn-cal-mount-90').addEventListener('click', () => setCalMount(90, 0, 0));
+    document.getElementById('btn-cal-mount-minus90').addEventListener('click', () => setCalMount(-90, 0, 0));
+    document.getElementById('btn-cal-mount-180').addEventListener('click', () => setCalMount(180, 0, 0));
+    document.getElementById('btn-cal-mount-roll90').addEventListener('click', () => setCalMount(0, 0, 90));
+    document.getElementById('btn-cal-mount-pitch90').addEventListener('click', () => setCalMount(0, 90, 0));
+
+    // Detección Automática de Orientación 3D (Yaw, Pitch, Roll estilo Drone)
+    let autoDetecting = false;
+    let neutralQuat = new THREE.Quaternion();
+
+    document.getElementById('btn-auto-detect-mount').addEventListener('click', () => {
+      if (autoDetecting) return;
+      autoDetecting = true;
+      const panel = document.getElementById('auto-detect-panel');
+      const msg = document.getElementById('detect-step-msg');
+      const pBar = document.getElementById('detect-progress-bar');
+      const res = document.getElementById('detect-result');
+      panel.style.display = 'flex';
+      res.textContent = '';
+      pBar.style.width = '0%';
+
+      // Paso 1: Mide orientación neutral en reposo durante 2 segundos para capturar vector de gravedad Z
+      msg.textContent = '1/2: Coloca el control plano sobre la mesa (capturando vertical Z)...';
+      let progress = 0;
+      const timer1 = setInterval(() => {
+        progress += 5;
+        pBar.style.width = `${progress}%`;
+        if (progress >= 100) {
+          clearInterval(timer1);
+          neutralQuat.copy(lastQuat);
+
+          // Vector de gravedad en el marco sensor en reposo: gz = q0^-1 * [0, 0, 1] * q0
+          const uz = new THREE.Vector3(
+            2 * (neutralQuat.x * neutralQuat.z - neutralQuat.w * neutralQuat.y),
+            2 * (neutralQuat.y * neutralQuat.z + neutralQuat.w * neutralQuat.x),
+            neutralQuat.w * neutralQuat.w - neutralQuat.x * neutralQuat.x - neutralQuat.y * neutralQuat.y + neutralQuat.z * neutralQuat.z
+          ).normalize();
+
+          // Paso 2: Pide al usuario inclinar hacia adelante
+          msg.textContent = '2/2: ¡Ahora inclina el control hacia el frente (cabeceo hacia abajo)!';
+          pBar.style.width = '0%';
+          let progress2 = 0;
+          let maxDeltaMag = 0;
+          let bestRotAxis = new THREE.Vector3(0, 1, 0);
+
+          const timer2 = setInterval(() => {
+            progress2 += 5;
+            pBar.style.width = `${progress2}%`;
+
+            // Calcular diferencia de rotación relativa: deltaQ = neutralQ^-1 * currentQ
+            const deltaQ = new THREE.Quaternion().copy(neutralQuat).invert().multiply(lastQuat);
+            const vAxis = new THREE.Vector3(deltaQ.x, deltaQ.y, deltaQ.z);
+            const mag = vAxis.length();
+
+            if (mag > maxDeltaMag) {
+              maxDeltaMag = mag;
+              bestRotAxis.copy(vAxis).normalize();
+            }
+
+            if (progress2 >= 100) {
+              clearInterval(timer2);
+              autoDetecting = false;
+
+              // Si el usuario no inclinó lo suficiente, asumir eje Y
+              if (maxDeltaMag < 0.04) {
+                bestRotAxis.set(0, 1, 0);
+              }
+
+              // Ortogonalizar eje de cabeceo uy respecto a uz: uy = normalize(rotAxis - (rotAxis . uz) * uz)
+              const dot = bestRotAxis.dot(uz);
+              const uy = new THREE.Vector3().copy(bestRotAxis).sub(new THREE.Vector3().copy(uz).multiplyScalar(dot)).normalize();
+              // Eje frontal ux = uy x uz
+              const ux = new THREE.Vector3().crossVectors(uy, uz).normalize();
+
+              // Matriz de rotación R con filas ux, uy, uz
+              const R = new THREE.Matrix4();
+              R.set(
+                ux.x, ux.y, ux.z, 0,
+                uy.x, uy.y, uy.z, 0,
+                uz.x, uz.y, uz.z, 0,
+                0,    0,    0,    1
+              );
+
+              // Extraer ángulos de Euler orden ZYX
+              const euler = new THREE.Euler().setFromRotationMatrix(R, 'ZYX');
+              let rawYaw = THREE.MathUtils.radToDeg(euler.z);
+              let rawPitch = THREE.MathUtils.radToDeg(euler.y);
+              let rawRoll = THREE.MathUtils.radToDeg(euler.x);
+
+              function snap(deg) {
+                for (let target of [-180, -90, 0, 90, 180]) {
+                  if (Math.abs(deg - target) < 22) return target;
+                }
+                return Math.round(deg);
+              }
+
+              const snappedYaw = snap(rawYaw);
+              const snappedPitch = snap(rawPitch);
+              const snappedRoll = snap(rawRoll);
+
+              setCalMount(snappedYaw, snappedPitch, snappedRoll);
+              msg.innerHTML = `✓ ¡Detección 3D Completa!`;
+              res.innerHTML = `Yaw: <b style="color:var(--accent-cyan);">${snappedYaw}°</b> | Pitch: <b style="color:var(--accent-amber);">${snappedPitch}°</b> | Roll: <b style="color:var(--accent-emerald);">${snappedRoll}°</b>`;
+              showToast(`🎯 Montaje 3D: Yaw=${snappedYaw}°, Pitch=${snappedPitch}°, Roll=${snappedRoll}°`);
+            }
+          }, 100);
+        }
+      }, 100);
+    });
+
+
+
+    // Modo simulación rápida para demostración
+    document.getElementById('btn-sim-mag').addEventListener('click', () => {
+      let t = 0;
+      const interval = setInterval(() => {
+        t += 0.08;
+        const x = Math.sin(t * 1.5) * Math.cos(t * 0.7) * 45 + (Math.random() - 0.5) * 5;
+        const y = Math.sin(t * 1.5) * Math.sin(t * 0.7) * 45 + (Math.random() - 0.5) * 5;
+        const z = Math.cos(t * 1.5) * 45 + (Math.random() - 0.5) * 5;
+        recordMagSample(x, y, z);
+        if (coveragePct >= 85) clearInterval(interval);
+      }, 30);
+    });
+
+    // Simulación de calibración de reposo (Paso 1)
+    document.getElementById('btn-start-gyro').addEventListener('click', function() {
+      this.disabled = true;
+      this.textContent = "Midiendo reposo (no muevas el sensor)...";
+      let progress = 0;
+      const pBar = document.getElementById('gyro-progress');
+      const timer = setInterval(() => {
+        progress += 5;
+        pBar.style.width = `${progress}%`;
+        if (progress >= 100) {
+          clearInterval(timer);
+          document.getElementById('card-step-1').classList.add('completed');
+          document.getElementById('card-step-2').classList.add('active');
+          this.textContent = "✓ Reposo Calibrado (Bias Capturado)";
+        }
+      }, 150);
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // Loop de renderizado Three.js
+    function animate() {
+      requestAnimationFrame(animate);
+      wireSphere.rotation.y += 0.002;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    window.onload = () => {
+      connectWS();
+      animate();
+    };
+  </script>
+</body>
+</html>

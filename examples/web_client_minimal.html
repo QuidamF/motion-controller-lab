@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Motion Controller Lab — Cliente Web Mínimo</title>
+  <style>
+    body { font-family: sans-serif; background: #0b0f19; color: #fff; padding: 24px; text-align: center; }
+    .card { background: #131b2e; border: 1px solid #233152; border-radius: 12px; padding: 24px; max-width: 480px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .val { font-family: monospace; font-size: 24px; font-weight: bold; color: #00f2fe; margin: 8px 0; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; background: #233152; color: #94a3b8; }
+    .connected { background: #059669; color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Motion Controller Client</h2>
+    <div id="status" class="badge">Conectando a ws://127.0.0.1:8765...</div>
+    <hr style="border: 0; border-top: 1px solid #233152; margin: 20px 0;">
+    <div>Roll (Alabeo):</div>
+    <div id="lbl-roll" class="val">0.0°</div>
+    <div>Pitch (Cabeceo):</div>
+    <div id="lbl-pitch" class="val">0.0°</div>
+    <div>Yaw (Guiñada):</div>
+    <div id="lbl-yaw" class="val">0.0°</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 12px;" id="lbl-seq">Secuencia: -</div>
+  </div>
+
+  <script>
+    const ws = new WebSocket("ws://127.0.0.1:8765");
+    const statusEl = document.getElementById("status");
+
+    ws.onopen = () => {
+      statusEl.textContent = "✓ CONECTADO A 50 HZ";
+      statusEl.className = "badge connected";
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = "DESCONECTADO";
+      statusEl.className = "badge";
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "telemetry" && msg.orientation) {
+          document.getElementById("lbl-roll").textContent = (msg.orientation.roll_deg || 0).toFixed(1) + "°";
+          document.getElementById("lbl-pitch").textContent = (msg.orientation.pitch_deg || 0).toFixed(1) + "°";
+          document.getElementById("lbl-yaw").textContent = (msg.orientation.yaw_rel_deg || 0).toFixed(1) + "°";
+          document.getElementById("lbl-seq").textContent = "Paquete #" + msg.sequence + " | Retardo extra: " + (msg.extra_delay_ms || 0) + " ms";
+        }
+      } catch (e) {}
+    };
+  </script>
+</body>
+</html>

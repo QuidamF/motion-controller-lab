@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Controller Lab — 6-DOF & Visualizador 3D</title>
+  
+  <!-- Tipografía de alta fidelidad -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Three.js y OrbitControls compatibles con protocolo local file:/// y http:// -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --panel-bg: rgba(14, 18, 27, 0.82);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --panel-border-hover: rgba(0, 242, 254, 0.35);
+      --card-bg: rgba(20, 26, 40, 0.68);
+      
+      --accent-cyan: #00f2fe;
+      --accent-blue: #4facfe;
+      --accent-purple: #7f00ff;
+      --accent-pink: #f107a3;
+      --accent-emerald: #00f5a0;
+      --accent-amber: #ffb703;
+      --accent-coral: #ff5e62;
+      
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #4b5563;
+      
+      --glow-cyan: 0 0 25px rgba(0, 242, 254, 0.35);
+      --glow-emerald: 0 0 20px rgba(0, 245, 160, 0.35);
+      --glow-pink: 0 0 25px rgba(241, 7, 163, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+    }
+
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .viewport-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+      background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(7, 9, 14, 0.6) 80%, rgba(7, 9, 14, 0.95) 100%);
+    }
+
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      pointer-events: auto;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .glass-panel:hover {
+      border-color: var(--panel-border-hover);
+    }
+
+    .top-bar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 10;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #07090e;
+      font-weight: 800;
+      font-size: 14px;
+      box-shadow: var(--glow-cyan);
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(0, 242, 254, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pill-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(20, 26, 40, 0.6);
+      transition: all 0.3s ease;
+    }
+
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-coral);
+      box-shadow: 0 0 10px var(--accent-coral);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .connected .pill-dot {
+      background: var(--accent-emerald);
+      box-shadow: 0 0 12px var(--accent-emerald);
+      animation: pulse-emerald 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse-emerald {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.8; }
+    }
+
+    /* Left Floating Panel — Primary Telemetry HUD */
+    .hud-left {
+      position: absolute;
+      top: 92px;
+      left: 16px;
+      width: 325px;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 10;
+    }
+
+    .hud-left::-webkit-scrollbar, .hud-right::-webkit-scrollbar {
+      width: 4px;
+    }
+    .hud-left::-webkit-scrollbar-thumb, .hud-right::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(0, 242, 254, 0.3), transparent);
+    }
+
+    /* 6-DOF Kinematic Position & Speedometer Card */
+    .kinematics-card {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.08), rgba(127, 0, 255, 0.08));
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .speed-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 8px;
+    }
+
+    .speed-val-big {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.1rem;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1;
+      text-shadow: 0 0 20px rgba(0, 242, 254, 0.5);
+    }
+
+    .speed-unit {
+      font-size: 11px;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      margin-left: 4px;
+    }
+
+    .peak-badge {
+      font-size: 11px;
+      color: var(--accent-amber);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    .pos-coords {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      text-align: center;
+    }
+
+    .pos-item {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 6px 4px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .pos-label {
+      font-size: 9px;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .pos-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    /* Power Bar for Swing Impact */
+    .power-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .power-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald), var(--accent-coral));
+      border-radius: 3px;
+      transition: width 0.06s linear;
+    }
+
+    /* Euler Degrees Gauges */
+    .euler-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .euler-card {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 10px 8px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .euler-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .euler-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .euler-card.roll { border-top: 3px solid var(--accent-coral); }
+    .euler-card.pitch { border-top: 3px solid var(--accent-emerald); }
+    .euler-card.yaw { border-top: 3px solid var(--accent-cyan); }
+
+    /* PFD Artificial Horizon Mini-HUD */
+    .pfd-container {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .pfd-canvas {
+      width: 100%;
+      height: 105px;
+      border-radius: 8px;
+      background: #090c13;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Quaternion Visualizer Bars */
+    .quat-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .quat-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    .quat-name {
+      width: 14px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+    }
+
+    .quat-track {
+      flex: 1;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .quat-fill {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.08s ease;
+    }
+
+    .quat-val {
+      width: 48px;
+      text-align: right;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 10px;
+    }
+
+    /* Right Floating Panel — View Controls & Model Switcher */
+    .hud-right {
+      position: absolute;
+      top: 92px;
+      right: 16px;
+      width: 300px;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 10;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-group-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .hud-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .hud-btn:hover {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: rgba(0, 242, 254, 0.5);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .hud-btn.active {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(127, 0, 255, 0.25));
+      border-color: var(--accent-cyan);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(0, 242, 254, 0.25);
+    }
+
+    .hud-btn.btn-tare {
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      color: #07090e;
+      font-weight: 700;
+      border: none;
+      box-shadow: var(--glow-cyan);
+      padding: 12px;
+      font-size: 12px;
+    }
+
+    .hud-btn.btn-tare:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(0, 242, 254, 0.6);
+    }
+
+    .hud-btn.btn-action-spray {
+      background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+      color: #fff;
+      border: none;
+      box-shadow: var(--glow-pink);
+      padding: 11px;
+      font-weight: 700;
+    }
+
+    /* Switch / Toggle item */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-row:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .toggle-switch {
+      width: 36px;
+      height: 20px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      position: relative;
+      transition: background 0.25s ease;
+    }
+
+    .toggle-knob {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.25s ease;
+    }
+
+    .toggle-row.on .toggle-switch {
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+    }
+
+    .toggle-row.on .toggle-knob {
+      transform: translateX(16px);
+      background: #07090e;
+    }
+
+    /* Slider Row */
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .custom-slider {
+      width: 100%;
+      accent-color: var(--accent-cyan);
+      cursor: pointer;
+    }
+
+    /* Color Palette for Graffiti */
+    .color-palette {
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .color-swatch:hover, .color-swatch.active {
+      transform: scale(1.2);
+      border-color: #fff;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .bottom-bar {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 18px;
+      z-index: 10;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .key-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+    }
+
+    #toast {
+      position: absolute;
+      top: 86px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(14, 18, 27, 0.92);
+      border: 1px solid var(--accent-cyan);
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: 30px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: var(--glow-cyan);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Impact Flash Effect */
+    #impact-banner {
+      position: absolute;
+      top: 180px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.8);
+      background: linear-gradient(135deg, rgba(255, 94, 98, 0.9), rgba(255, 183, 3, 0.9));
+      color: #07090e;
+      padding: 10px 24px;
+      border-radius: 40px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.2rem;
+      font-weight: 800;
+      box-shadow: 0 0 40px rgba(255, 94, 98, 0.7);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 90;
+    }
+
+    #impact-banner.pop {
+      transform: translateX(-50%) scale(1.1);
+      opacity: 1;
+    }
+
+    /* Modal Asistente de Calibración SQLite */
+    .cal-modal-backdrop {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: center; z-index: 200;
+    }
+    .cal-modal-card {
+      width: 500px; max-width: 92%; padding: 22px;
+      border: 1px solid var(--accent-cyan); box-shadow: var(--glow-cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Three.js Canvas -->
+  <div id="canvas-container"></div>
+  <div class="viewport-overlay"></div>
+
+  <!-- Notificaciones -->
+  <div id="toast">Postura neutral calibrada (Tare)</div>
+  <div id="impact-banner">¡IMPACTO REGISTRADO! ⚡</div>
+
+  <!-- Modal Calibración SQLite Integrado -->
+  <div id="cal-modal" class="cal-modal-backdrop" style="display:none;">
+    <div class="cal-modal-card glass-panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--panel-border); padding-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:28px; height:28px; border-radius:6px; background:linear-gradient(135deg, var(--accent-emerald), var(--accent-cyan)); display:flex; align-items:center; justify-content:center; color:#07090e; font-weight:800;">✓</div>
+          <div>
+            <div style="font-family:'Outfit'; font-weight:700; font-size:1.05rem;">Asistente de Calibración SQLite</div>
+            <div id="cal-modal-dev" style="font-size:10px; color:var(--text-muted); font-family:'JetBrains Mono';">DISPOSITIVO: --</div>
+          </div>
+        </div>
+        <button id="btn-close-cal-modal" style="background:transparent; border:none; color:var(--text-muted); font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="margin-top:14px; display:flex; flex-direction:column; gap:12px;">
+        <p style="font-size:12px; color:var(--text-muted); line-height:1.4;">
+          Calibra este periférico una sola vez rotándolo en todas las direcciones. Los parámetros se guardarán permanentemente en la base de datos SQLite y se cargarán automáticamente al reiniciar.
+        </p>
+
+        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--panel-border); border-radius:8px; padding:12px;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px;">
+            <span>Progreso de Cobertura Esférica</span>
+            <span id="modal-cov-pct" style="color:var(--accent-cyan); font-weight:700;">0.0%</span>
+          </div>
+          <div style="width:100%; height:8px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden;">
+            <div id="modal-cov-bar" style="height:100%; width:0%; background:linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald)); transition:width 0.15s ease;"></div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:4px;">
+          <button id="btn-modal-save-cal" class="hud-btn btn-tare" style="flex:1;" disabled>💾 Guardar en SQLite</button>
+          <a href="calibration.html" target="_blank" class="hud-btn" style="flex:1; text-decoration:none; text-align:center;">Herramienta 3D Completa ➔</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra Superior -->
+  <header class="top-bar glass-panel">
+    <div class="brand-title">
+      <div class="brand-icon">6D</div>
+      <div>
+        <span>Motion Controller Lab</span>
+        <span class="brand-badge">CINEMÁTICA 6-DOF & DEPORTES</span>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <div id="ws-pill" class="pill-badge">
+        <div class="pill-dot"></div>
+        <span id="ws-text">WS: Conectando...</span>
+      </div>
+      <button id="btn-open-cal-modal" class="pill-badge" style="cursor:pointer;" title="Abrir asistente de calibración SQLite">
+        <div id="cal-dot" class="pill-dot" style="background:var(--accent-amber); box-shadow:0 0 10px var(--accent-amber);"></div>
+        <span id="cal-text">Calibración: Verificando...</span>
+      </button>
+      <div id="dev-pill" class="pill-badge">
+        <span id="dev-name" style="color:var(--text-muted); font-family:'JetBrains Mono',monospace;">DISP: --</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Panel Izquierdo: Cinemática 6-DOF, Velocímetro y Actitud -->
+  <aside class="hud-left glass-panel">
+    <!-- Estimación 6-DOF y Velocímetro de Swing -->
+    <div class="section-title">Cinemática 6-DOF & Swing</div>
+    <div class="kinematics-card">
+      <div class="speed-display">
+        <div>
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Velocidad Extremo</span>
+          <div style="display:flex; align-items:baseline;">
+            <span id="val-speed-kmh" class="speed-val-big">0.0</span>
+            <span class="speed-unit">km/h</span>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Pico Máximo</span>
+          <div id="val-peak-speed" class="peak-badge">0.0 km/h</div>
+          <button id="btn-reset-peak" style="background:transparent; border:none; color:var(--accent-cyan); font-size:9px; cursor:pointer; text-decoration:underline; margin-top:2px;">Reiniciar</button>
+        </div>
+      </div>
+
+      <!-- Barra de potencia del golpe -->
+      <div style="margin-top:2px;">
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-bottom:4px;">
+          <span>Potencia Dinámica</span>
+          <span id="val-speed-ms">0.0 m/s</span>
+        </div>
+        <div class="power-track"><div id="power-fill" class="power-fill"></div></div>
+      </div>
+
+      <!-- Coordenadas de posición estimada X, Y, Z -->
+      <div style="margin-top:4px;">
+        <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Posición Mano / Extremo</span>
+        <div class="pos-coords" style="margin-top:4px;">
+          <div class="pos-item">
+            <div class="pos-label">X (Lat)</div>
+            <div id="pos-x" class="pos-val">0 cm</div>
+          </div>
+          <div class="pos-item">
+            <div class="pos-label">Y (Alt)</div>
+            <div id="pos-y" class="pos-val">0 cm</div>
+          </div>
+          <div class="pos-item">
+            <div class="pos-label">Z (Prof)</div>
+            <div id="pos-z" class="pos-val">0 cm</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orientación Euler -->
+    <div class="section-title">Actitud Euler (ZYX)</div>
+    <div class="euler-grid">
+      <div class="euler-card roll">
+        <div class="euler-label">Roll (X)</div>
+        <div id="val-roll" class="euler-val">0.0°</div>
+      </div>
+      <div class="euler-card pitch">
+        <div class="euler-label">Pitch (Y)</div>
+        <div id="val-pitch" class="euler-val">0.0°</div>
+      </div>
+      <div class="euler-card yaw">
+        <div class="euler-label">Yaw (Z)</div>
+        <div id="val-yaw" class="euler-val">0.0°</div>
+      </div>
+    </div>
+
+    <!-- PFD Artificial Horizon -->
+    <div class="pfd-container">
+      <canvas id="pfd-canvas" class="pfd-canvas" width="280" height="105"></canvas>
+      <div style="font-size:10px; color:var(--text-muted); margin-top:4px; display:flex; justify-content:space-between; width:100%;">
+        <span>HORIZONTE PFD</span>
+        <span id="mag-heading-txt" style="color:var(--accent-amber); font-weight:600;">MAG: --°</span>
+      </div>
+    </div>
+
+    <!-- Cuaternión Unitario -->
+    <div class="section-title">Cuaternión Normalizado</div>
+    <div class="quat-bars">
+      <div class="quat-row">
+        <span class="quat-name">W</span>
+        <div class="quat-track"><div id="qbar-w" class="quat-fill" style="background:var(--accent-cyan); width:100%;"></div></div>
+        <span id="qval-w" class="quat-val">1.000</span>
+      </div>
+      <div class="quat-row">
+        <span class="quat-name">X</span>
+        <div class="quat-track"><div id="qbar-x" class="quat-fill" style="background:var(--accent-coral); width:50%;"></div></div>
+        <span id="qval-x" class="quat-val">0.000</span>
+      </div>
+      <div class="quat-row">
+        <span class="quat-name">Y</span>
+        <div class="quat-track"><div id="qbar-y" class="quat-fill" style="background:var(--accent-emerald); width:50%;"></div></div>
+        <span id="qval-y" class="quat-val">0.000</span>
+      </div>
+      <div class="quat-row">
+        <span class="quat-name">Z</span>
+        <div class="quat-track"><div id="qbar-z" class="quat-fill" style="background:var(--accent-blue); width:50%;"></div></div>
+        <span id="qval-z" class="quat-val">0.000</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Panel Derecho: Modelos, Cinemática y Acciones -->
+  <aside class="hud-right glass-panel">
+    <div class="section-title">Control de Origen</div>
+    <button id="btn-tare" class="hud-btn btn-tare" title="Establece la postura actual como origen neutral (Espacio)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M2 12h20M12 2a10 10 0 1 0 10 10"/></svg>
+      TARE / CENTRAR (Espacio)
+    </button>
+    <button id="btn-reset-tare" class="hud-btn" style="font-size:11px;">
+      Restablecer a Orientación Absoluta
+    </button>
+
+    <div class="section-title">Modo de Visualización 3D</div>
+    <div class="control-group">
+      <div class="btn-group-grid">
+        <button id="btn-mode-arm" class="hud-btn active">Brazo 6-DOF</button>
+        <button id="btn-mode-pivot" class="hud-btn">Pivote Fijo</button>
+      </div>
+    </div>
+
+    <div class="section-title">Herramienta / Objeto 3D</div>
+    <div class="control-group">
+      <div class="btn-group-grid">
+        <button id="btn-model-racket" class="hud-btn active">Raqueta Tenis</button>
+        <button id="btn-model-spray" class="hud-btn">Bote Grafiti</button>
+        <button id="btn-model-pcb" class="hud-btn">PCB ESP32</button>
+        <button id="btn-model-controller" class="hud-btn">Mando VR</button>
+      </div>
+    </div>
+
+    <!-- Ajustes del Bote de Grafiti (Solo cuando Spray está activo) -->
+    <div id="spray-controls-group" class="control-group" style="display:none;">
+      <div class="section-title">Pintura Grafiti Virtual</div>
+      <button id="btn-spray-trigger" class="hud-btn btn-action-spray">
+        🎨 ROCIAR PINTURA (Click / R)
+      </button>
+      <div class="color-palette">
+        <div class="color-swatch active" style="background:#00f2fe; color:#00f2fe;" data-color="#00f2fe"></div>
+        <div class="color-swatch" style="background:#f107a3; color:#f107a3;" data-color="#f107a3"></div>
+        <div class="color-swatch" style="background:#00f5a0; color:#00f5a0;" data-color="#00f5a0"></div>
+        <div class="color-swatch" style="background:#ffb703; color:#ffb703;" data-color="#ffb703"></div>
+        <div class="color-swatch" style="background:#ffffff; color:#ffffff;" data-color="#ffffff"></div>
+      </div>
+      <button id="btn-clear-canvas" class="hud-btn" style="font-size:10px;">Limpiar Muro de Grafiti</button>
+    </div>
+
+    <div class="section-title">Ajustes Cinemáticos</div>
+    <div class="control-group">
+      <div class="slider-row">
+        <div class="slider-header">
+          <span>Longitud de Brazo</span>
+          <span id="lbl-arm-len">65 cm</span>
+        </div>
+        <input id="slider-arm-len" type="range" min="40" max="95" value="65" class="custom-slider">
+      </div>
+
+      <div class="btn-group-grid">
+        <button id="btn-hand-right" class="hud-btn active">Diestro (Der)</button>
+        <button id="btn-hand-left" class="hud-btn">Zurdo (Izq)</button>
+      </div>
+    </div>
+
+    <div class="section-title">Capas y Opciones</div>
+    <div class="control-group">
+      <div id="toggle-skeleton" class="toggle-row on">
+        <span>Esqueleto de Brazo 3D</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+      <div id="toggle-trail" class="toggle-row on">
+        <span>Estela de Movimiento (Swing)</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+      <div id="toggle-wall" class="toggle-row on">
+        <span>Muro / Lienzo Frontal</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+      <div id="toggle-demo" class="toggle-row">
+        <span>Modo Demo (Swing Automático)</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+    </div>
+
+    <div class="section-title">Inversión de Ejes</div>
+    <div class="control-group">
+      <div id="toggle-inv-yaw" class="toggle-row on">
+        <span>Invertir Yaw (Giro Z / Horizontal)</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+      <div id="toggle-inv-pitch" class="toggle-row">
+        <span>Invertir Pitch (Cabeceo Y)</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+      <div id="toggle-inv-roll" class="toggle-row">
+        <span>Invertir Roll (Alabeo X)</span>
+        <div class="toggle-switch"><div class="toggle-knob"></div></div>
+      </div>
+    </div>
+
+    <div class="section-title">Orientación de Montaje IMU (3D)</div>
+    <div class="control-group">
+      <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">
+        Alinea el sensor con la protoboard o carcasa en los 3 ejes:
+      </div>
+      <!-- Presets 3D -->
+      <div class="btn-group-grid" style="grid-template-columns: 1fr 1fr; gap:6px;">
+        <button id="btn-mount-0" class="hud-btn active">0° Estándar</button>
+        <button id="btn-mount-90" class="hud-btn" title="Rotado 90° Yaw en protoboard">+90° Yaw</button>
+        <button id="btn-mount-minus90" class="hud-btn" title="Rotado -90° Yaw en protoboard">-90° Yaw</button>
+        <button id="btn-mount-180" class="hud-btn" title="Invertido 180° Yaw">180° Yaw</button>
+        <button id="btn-mount-roll90" class="hud-btn" title="Montado de lado (+90° Roll)">+90° Roll</button>
+        <button id="btn-mount-pitch90" class="hud-btn" title="Montado vertical (+90° Pitch)">+90° Pitch</button>
+      </div>
+
+      <!-- Entradas Numéricas 3D -->
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px;">
+        <div>
+          <span style="font-size:10px; color:var(--text-muted);">Yaw (Z):</span>
+          <input id="vis-input-mount-yaw" type="number" value="0" min="-180" max="180" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-cyan); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+        </div>
+        <div>
+          <span style="font-size:10px; color:var(--text-muted);">Pitch (Y):</span>
+          <input id="vis-input-mount-pitch" type="number" value="0" min="-180" max="180" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-amber); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+        </div>
+        <div>
+          <span style="font-size:10px; color:var(--text-muted);">Roll (X):</span>
+          <input id="vis-input-mount-roll" type="number" value="0" min="-180" max="180" step="1" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--accent-emerald); font-family:'JetBrains Mono'; font-weight:700; text-align:center; border-radius:4px; padding:4px;">
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <span style="font-size:11px; color:var(--text-muted);">Montaje Activo:</span>
+        <span id="lbl-active-mount" style="font-family:'JetBrains Mono'; font-weight:700; color:var(--accent-cyan);">0° (P:0° R:0°)</span>
+      </div>
+
+      <button id="btn-vis-auto-detect" class="hud-btn" style="background:linear-gradient(135deg, var(--accent-purple), var(--accent-blue)); color:#fff; margin-top:8px; font-weight:700;">
+        🎯 Detectar con 2 Gestos (Drone)
+      </button>
+
+      <div id="vis-detect-panel" style="display:none; flex-direction:column; gap:6px; margin-top:8px; padding:10px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(127,0,255,0.3);">
+        <div id="vis-detect-step-msg" style="font-size:11px; font-weight:600; color:var(--accent-cyan); line-height:1.3;">
+          1/2: Coloca el control plano en reposo...
+        </div>
+        <div class="progress-bar-container" style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+          <div id="vis-detect-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg, var(--accent-purple), var(--accent-cyan)); transition:width 0.1s ease;"></div>
+        </div>
+        <div id="vis-detect-result" style="font-size:11px; font-family:'JetBrains Mono'; color:var(--accent-emerald); font-weight:700;"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Atajos Inferiores -->
+  <footer class="bottom-bar glass-panel">
+    <span><span class="key-badge">Espacio</span> Tare / Centrar</span>
+    <span><span class="key-badge">R</span> Rociar Spray</span>
+    <span><span class="key-badge">Click Izq</span> Orbitar Vista</span>
+    <span><span class="key-badge">Scroll</span> Zoom</span>
+    <span><span class="key-badge">T</span> Conmutar Estela</span>
+  </footer>
+
+  <script>
+    // =========================================================================
+    // 1. THREE.JS SCENE, RENDERER & LIGHTING
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x07090e, 0.035);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(2.8, 2.0, 4.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 + 0.12;
+    controls.minDistance = 1.2;
+    controls.maxDistance = 18.0;
+    controls.target.set(0.2, 0.8, 0);
+
+    // Iluminación
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0x00f2fe, 1.8);
+    keyLight.position.set(4, 7, 5);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 1024;
+    keyLight.shadow.mapSize.height = 1024;
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x7f00ff, 1.1);
+    fillLight.position.set(-5, 4, -3);
+    scene.add(fillLight);
+
+    const groundGrid = new THREE.GridHelper(16, 32, 0x00f2fe, 0x1f293d);
+    groundGrid.position.y = -0.01;
+    groundGrid.material.opacity = 0.4;
+    groundGrid.material.transparent = true;
+    scene.add(groundGrid);
+
+    // =========================================================================
+    // 2. MURO DE GRAFITI INTERACTIVO (DYNAMIC CANVAS TEXTURE)
+    // =========================================================================
+    const wallCanvas = document.createElement('canvas');
+    wallCanvas.width = 1024;
+    wallCanvas.height = 512;
+    const wallCtx = wallCanvas.getContext('2d');
+
+    // Fondo inicial del muro (estilo cemento / cyber-brick)
+    function clearWallCanvas() {
+      wallCtx.fillStyle = '#11151f';
+      wallCtx.fillRect(0, 0, wallCanvas.width, wallCanvas.height);
+      // Rejilla de ladrillos sutil
+      wallCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      wallCtx.lineWidth = 2;
+      for (let y = 0; y < wallCanvas.height; y += 32) {
+        wallCtx.beginPath(); wallCtx.moveTo(0, y); wallCtx.lineTo(wallCanvas.width, y); wallCtx.stroke();
+      }
+      for (let x = 0; x < wallCanvas.width; x += 64) {
+        wallCtx.beginPath(); wallCtx.moveTo(x, 0); wallCtx.lineTo(x, wallCanvas.height); wallCtx.stroke();
+      }
+      // Logotipo sutil en el muro
+      wallCtx.font = '700 24px "Outfit", sans-serif';
+      wallCtx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      wallCtx.textAlign = 'center';
+      wallCtx.fillText('MOTION CONTROLLER LAB — GRAFFITI WALL', wallCanvas.width / 2, 40);
+    }
+    clearWallCanvas();
+
+    const wallTexture = new THREE.CanvasTexture(wallCanvas);
+    const wallGeo = new THREE.PlaneGeometry(6.4, 3.2);
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: wallTexture,
+      roughness: 0.8,
+      metalness: 0.1,
+    });
+    const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+    wallMesh.position.set(0, 1.6, -3.2); // Colocado frente al usuario a 3.2m
+    wallMesh.receiveShadow = true;
+    scene.add(wallMesh);
+
+    // =========================================================================
+    // 3. MODELOS 3D (RAQUETA, BOTE GRAFITI, PCB, MANDO)
+    // =========================================================================
+    // Nodo contenedor que se posiciona en la mano del brazo o en el centro
+    const toolRoot = new THREE.Group();
+    scene.add(toolRoot);
+
+    // --- A. Raqueta de Tenis / Bate ---
+    const racketGroup = new THREE.Group();
+    // Mango con grip texturizado
+    const gripMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.5, 16), gripMat);
+    grip.position.z = 0.25;
+    grip.rotation.x = Math.PI / 2;
+    racketGroup.add(grip);
+
+    // Cuello / Garganta
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0x00f2fe, metalness: 0.8, roughness: 0.2 });
+    const throatL = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.35, 12), shaftMat);
+    throatL.position.set(0.05, 0, -0.15);
+    throatL.rotation.x = Math.PI / 2;
+    throatL.rotation.z = -0.2;
+    const throatR = throatL.clone();
+    throatR.position.x = -0.05;
+    throatR.rotation.z = 0.2;
+    racketGroup.add(throatL, throatR);
+
+    // Marco de la cabeza ovalada
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x7f00ff, metalness: 0.7, roughness: 0.25 });
+    const frameMesh = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 16, 48), frameMat);
+    frameMesh.scale.set(0.8, 1.25, 1.0);
+    frameMesh.position.set(0, 0, -0.65);
+    racketGroup.add(frameMesh);
+
+    // Malla de cuerdas / Strings (disco semi-transparente con rejilla)
+    const stringsMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, wireframe: true });
+    const stringsMesh = new THREE.Mesh(new THREE.CircleGeometry(0.34, 24), stringsMat);
+    stringsMesh.scale.set(0.8, 1.25, 1.0);
+    stringsMesh.position.set(0, 0, -0.65);
+    racketGroup.add(stringsMesh);
+
+    // Sweet Spot glow indicator
+    const sweetSpotMat = new THREE.MeshBasicMaterial({ color: 0x00f5a0, transparent: true, opacity: 0.4 });
+    const sweetSpot = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), sweetSpotMat);
+    sweetSpot.position.set(0, 0, -0.65);
+    racketGroup.add(sweetSpot);
+
+    toolRoot.add(racketGroup);
+
+    // --- B. Bote de Spray para Grafiti ---
+    const sprayGroup = new THREE.Group();
+    sprayGroup.visible = false;
+
+    // Cuerpo de la lata
+    const canMat = new THREE.MeshStandardMaterial({ color: 0x1f2430, metalness: 0.85, roughness: 0.25 });
+    const canBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.55, 24), canMat);
+    canBody.rotation.x = Math.PI / 2;
+    sprayGroup.add(canBody);
+
+    // Etiqueta de color en el bote
+    const labelMat = new THREE.MeshStandardMaterial({ color: 0x00f2fe, roughness: 0.4 });
+    const canLabel = new THREE.Mesh(new THREE.CylinderGeometry(0.112, 0.112, 0.32, 24), labelMat);
+    canLabel.rotation.x = Math.PI / 2;
+    sprayGroup.add(canLabel);
+
+    // Cúpula superior y válvula
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.11, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), canMat);
+    dome.rotation.x = -Math.PI / 2;
+    dome.position.z = -0.27;
+    sprayGroup.add(dome);
+
+    const nozzleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+    const nozzle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.07), nozzleMat);
+    nozzle.position.set(0, 0.04, -0.36);
+    sprayGroup.add(nozzle);
+
+    // Cono de pulverización (spray cone emisor)
+    const sprayConeMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.0 });
+    const sprayCone = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.2, 16, 1, true), sprayConeMat);
+    sprayCone.rotation.x = Math.PI / 2;
+    sprayCone.position.set(0, 0.04, -0.96);
+    sprayGroup.add(sprayCone);
+
+    toolRoot.add(sprayGroup);
+
+    // --- C. Placa ESP32-C3 PCB ---
+    const pcbGroup = new THREE.Group();
+    pcbGroup.visible = false;
+    const pcbBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 1.4), new THREE.MeshStandardMaterial({ color: 0x0c1322, metalness: 0.3, roughness: 0.4 }));
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.08, 0.5), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.85, roughness: 0.25 }));
+    shield.position.set(0, 0.05, 0.25);
+    const mpu = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.2), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+    mpu.position.set(0, 0.04, -0.35);
+    pcbGroup.add(pcbBody, shield, mpu);
+    toolRoot.add(pcbGroup);
+
+    // --- D. Mando VR ---
+    const controllerGroup = new THREE.Group();
+    controllerGroup.visible = false;
+    const vrHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.7, 16), new THREE.MeshStandardMaterial({ color: 0x1e2430 }));
+    vrHandle.rotation.x = Math.PI / 2;
+    const vrRing = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.025, 16, 32), new THREE.MeshStandardMaterial({ color: 0x00f2fe, emissive: 0x00f2fe, emissiveIntensity: 0.3 }));
+    vrRing.position.set(0, 0.1, -0.35);
+    controllerGroup.add(vrHandle, vrRing);
+    toolRoot.add(controllerGroup);
+
+    // =========================================================================
+    // 4. MODELO CINEMÁTICO DE BRAZO HUMANO VIRTUAL (ARM KINEMATICS)
+    // =========================================================================
+    // El modelo calcula la postura articular de Hombro, Codo y Muñeca
+    const armGroup = new THREE.Group();
+    scene.add(armGroup);
+
+    const jointMat = new THREE.MeshStandardMaterial({ color: 0x00f2fe, metalness: 0.7, roughness: 0.3, emissive: 0x00f2fe, emissiveIntensity: 0.2 });
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0x222a38, metalness: 0.5, roughness: 0.4 });
+
+    const shoulderMesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), jointMat);
+    const elbowMesh = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), jointMat);
+    const wristMesh = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), jointMat);
+
+    const upperArmBone = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 1.0, 12), boneMat);
+    const forearmBone = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 1.0, 12), boneMat);
+
+    armGroup.add(shoulderMesh, elbowMesh, wristMesh, upperArmBone, forearmBone);
+
+    // Configuración Cinemática
+    const armConfig = {
+      isRightHand: true,
+      totalArmLength: 0.65, // Metros
+      shoulderPos: new THREE.Vector3(0.22, 1.35, 0.15), // Altura de hombro humano estándar
+      mode6DOF: true
+    };
+
+    function updateArmKinematics(controllerQuat) {
+      if (!armConfig.isRightHand) {
+        armConfig.shoulderPos.x = -0.22;
+      } else {
+        armConfig.shoulderPos.x = 0.22;
+      }
+
+      shoulderMesh.position.copy(armConfig.shoulderPos);
+
+      if (!armConfig.mode6DOF) {
+        // En modo pivote fijo, colocar la herramienta en el centro visual
+        toolRoot.position.set(0, 1.2, 0);
+        toolRoot.quaternion.copy(controllerQuat);
+        armGroup.visible = false;
+        return toolRoot.position;
+      }
+
+      armGroup.visible = skeletonEnabled;
+
+      // Longitudes anatómicas proporcionales (Húmero: 48%, Antebrazo + Muñeca: 52%)
+      const lUpper = armConfig.totalArmLength * 0.48;
+      const lFore = armConfig.totalArmLength * 0.52;
+
+      // Dirección apuntada por el controlador en espacio 3D
+      const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(controllerQuat);
+      const pitch = Math.asin(THREE.MathUtils.clamp(forwardDir.y, -1, 1)); // Ángulo vertical
+
+      // Extensión del codo basada en el ángulo de cabeceo y giro
+      // Brazo extendido hacia el frente/abajo, recogido al apuntar hacia el cuerpo
+      const extensionFactor = THREE.MathUtils.clamp(0.65 + 0.35 * Math.cos(pitch), 0.4, 1.0);
+      const reachDist = (lUpper + lFore) * extensionFactor;
+
+      // Posición de la mano en espacio tridimensional
+      const handPos = new THREE.Vector3()
+        .copy(armConfig.shoulderPos)
+        .addScaledVector(forwardDir, reachDist);
+
+      // Codo flexionado naturalmente hacia afuera y abajo
+      const sideDir = new THREE.Vector3(armConfig.isRightHand ? 0.35 : -0.35, -0.4, 0.15).normalize();
+      const midPoint = new THREE.Vector3().addVectors(armConfig.shoulderPos, handPos).multiplyScalar(0.5);
+      const elbowPos = midPoint.addScaledVector(sideDir, lUpper * 0.55);
+
+      // Posicionar articulaciones
+      elbowMesh.position.copy(elbowPos);
+      wristMesh.position.copy(handPos);
+
+      // Orientar y escalar huesos óseos
+      alignBone(upperArmBone, armConfig.shoulderPos, elbowPos);
+      alignBone(forearmBone, elbowPos, handPos);
+
+      // Posicionar y orientar la herramienta en la mano
+      toolRoot.position.copy(handPos);
+      toolRoot.quaternion.copy(controllerQuat);
+
+      return handPos;
+    }
+
+    function alignBone(mesh, pA, pB) {
+      const dist = pA.distanceTo(pB);
+      mesh.scale.set(1, dist, 1);
+      mesh.position.copy(pA).add(pB).multiplyScalar(0.5);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3().subVectors(pB, pA).normalize());
+    }
+
+    // =========================================================================
+    // 5. SEGUIMIENTO DE VELOCIDAD, SWING Y DETECCIÓN DE IMPACTOS
+    // =========================================================================
+    let lastPosition = new THREE.Vector3();
+    let lastVelocityTime = performance.now();
+    let currentSpeedKmh = 0;
+    let peakSpeedKmh = 0;
+    const impactBanner = document.getElementById('impact-banner');
+    let impactTimeout = null;
+
+    function triggerImpact(speed) {
+      impactBanner.textContent = `¡IMPACTO REGISTRADO! ⚡ ${speed.toFixed(1)} km/h`;
+      impactBanner.classList.add('pop');
+      clearTimeout(impactTimeout);
+      impactTimeout = setTimeout(() => impactBanner.classList.remove('pop'), 1200);
+
+      // Flash en el sweetspot de la raqueta
+      sweetSpotMat.opacity = 1.0;
+      setTimeout(() => sweetSpotMat.opacity = 0.4, 180);
+    }
+
+    function updateVelocityTracking(tipWorldPos, nowMs) {
+      const dt = (nowMs - lastVelocityTime) / 1000.0;
+      if (dt > 0.008 && dt < 0.25) {
+        const dist = tipWorldPos.distanceTo(lastPosition);
+        const speedMs = dist / dt;
+        const speedKmh = speedMs * 3.6;
+
+        // Suavizado exponencial para el velocímetro
+        currentSpeedKmh = currentSpeedKmh * 0.7 + speedKmh * 0.3;
+
+        if (currentSpeedKmh > peakSpeedKmh) {
+          peakSpeedKmh = currentSpeedKmh;
+          document.getElementById('val-peak-speed').textContent = `${peakSpeedKmh.toFixed(1)} km/h`;
+        }
+
+        // Detección de golpe o swing veloz (> 28 km/h con aceleración rápida)
+        if (currentSpeedKmh > 28 && (currentSpeedKmh - (lastSpeed || 0)) > 6) {
+          triggerImpact(currentSpeedKmh);
+        }
+        lastSpeed = currentSpeedKmh;
+
+        // Actualizar UI
+        document.getElementById('val-speed-kmh').textContent = currentSpeedKmh.toFixed(1);
+        document.getElementById('val-speed-ms').textContent = `${(currentSpeedKmh / 3.6).toFixed(1)} m/s`;
+        const powerPct = Math.min((currentSpeedKmh / 80.0) * 100, 100);
+        document.getElementById('power-fill').style.width = `${powerPct}%`;
+
+        // Actualizar coordenadas de posición
+        document.getElementById('pos-x').textContent = `${Math.round(tipWorldPos.x * 100)} cm`;
+        document.getElementById('pos-y').textContent = `${Math.round(tipWorldPos.y * 100)} cm`;
+        document.getElementById('pos-z').textContent = `${Math.round(tipWorldPos.z * 100)} cm`;
+      }
+      lastPosition.copy(tipWorldPos);
+      lastVelocityTime = nowMs;
+    }
+    let lastSpeed = 0;
+
+    document.getElementById('btn-reset-peak').addEventListener('click', () => {
+      peakSpeedKmh = 0;
+      document.getElementById('val-peak-speed').textContent = '0.0 km/h';
+    });
+
+    // =========================================================================
+    // 6. ESTELA DE MOVIMIENTO (MOTION TRAIL RIBBON)
+    // =========================================================================
+    const MAX_TRAIL_POINTS = 50;
+    const trailPositions = new Float32Array(MAX_TRAIL_POINTS * 3);
+    const trailGeometry = new THREE.BufferGeometry();
+    trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    const trailLine = new THREE.Line(trailGeometry, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.75 }));
+    scene.add(trailLine);
+    const trailHistory = [];
+    let trailEnabled = true;
+
+    function updateMotionTrail(tipPos) {
+      if (!trailEnabled) {
+        trailLine.visible = false;
+        return;
+      }
+      trailLine.visible = true;
+      trailHistory.unshift(tipPos.clone());
+      if (trailHistory.length > MAX_TRAIL_POINTS) trailHistory.pop();
+
+      const posAttr = trailGeometry.attributes.position;
+      for (let i = 0; i < MAX_TRAIL_POINTS; i++) {
+        const pt = trailHistory[i] || tipPos;
+        posAttr.setXYZ(i, pt.x, pt.y, pt.z);
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    // =========================================================================
+    // 7. MECÁNICA DE GRAFITI VIRTUAL (SPRAY PAINTING ON WALL)
+    // =========================================================================
+    let isSpraying = false;
+    let sprayColor = '#00f2fe';
+
+    function sprayAtWall(nozzlePos, dirVec) {
+      // Rayo desde la boquilla hacia el muro Z = -3.2
+      const targetZ = -3.2;
+      if (dirVec.z >= -0.05) return; // No apunta hacia el muro
+
+      const dist = (targetZ - nozzlePos.z) / dirVec.z;
+      if (dist <= 0 || dist > 6.0) return; // Demasiado lejos
+
+      const hitX = nozzlePos.x + dirVec.x * dist;
+      const hitY = nozzlePos.y + dirVec.y * dist;
+
+      // Mapear coordenadas 3D (-3.2 a +3.2 m en X, 0 a 3.2 m en Y) a coordenadas Canvas
+      const u = (hitX + 3.2) / 6.4;
+      const v = 1.0 - (hitY / 3.2);
+
+      if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
+        const cx = u * wallCanvas.width;
+        const cy = v * wallCanvas.height;
+
+        // Pulverizar gotas de pintura
+        wallCtx.fillStyle = sprayColor;
+        const radius = Math.max(12, 35 - dist * 4);
+        for (let i = 0; i < 18; i++) {
+          const r = Math.random() * radius;
+          const theta = Math.random() * Math.PI * 2;
+          const dotSize = Math.random() * 3 + 1;
+          wallCtx.beginPath();
+          wallCtx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), dotSize, 0, Math.PI * 2);
+          wallCtx.fill();
+        }
+        wallTexture.needsUpdate = true;
+      }
+    }
+
+    // Paleta de colores para grafiti
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+        swatch.classList.add('active');
+        sprayColor = swatch.dataset.color;
+        canLabel.material.color.setStyle(sprayColor);
+        sprayConeMat.color.setStyle(sprayColor);
+      });
+    });
+
+    const btnSprayTrigger = document.getElementById('btn-spray-trigger');
+    btnSprayTrigger.addEventListener('mousedown', () => isSpraying = true);
+    window.addEventListener('mouseup', () => isSpraying = false);
+    document.getElementById('btn-clear-canvas').addEventListener('click', clearWallCanvas);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyR') isSpraying = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyR') isSpraying = false;
+    });
+
+    // =========================================================================
+    // 8. GESTIÓN DE ORIENTACIÓN, TARE Y SLERP
+    // =========================================================================
+    let targetQuat = new THREE.Quaternion(0, 0, 0, 1);
+    let tareQuat = new THREE.Quaternion(0, 0, 0, 1);
+    let tareActive = false;
+    let skeletonEnabled = true;
+    let demoMode = false;
+    let demoClock = 0;
+
+    // Configuración de inversión de ejes (Yaw invertido por defecto para coincidir con la mano)
+    let invertYaw = true;
+    let invertPitch = false;
+    let invertRoll = false;
+
+    const toast = document.getElementById('toast');
+    let toastTimeout = null;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    function executeTare() {
+      tareQuat.copy(targetQuat).invert();
+      tareActive = true;
+      showToast("Postura neutral calibrada (Tare)");
+    }
+
+    function resetTare() {
+      tareQuat.identity();
+      tareActive = false;
+      showToast("Restablecido a orientación absoluta");
+    }
+
+    document.getElementById('btn-tare').addEventListener('click', executeTare);
+    document.getElementById('btn-reset-tare').addEventListener('click', resetTare);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        executeTare();
+      } else if (e.code === 'KeyT') {
+        document.getElementById('toggle-trail').click();
+      }
+    });
+
+    // =========================================================================
+    // 9. DIBUJADO DEL HORIZONTE ARTIFICIAL (PFD CANVAS)
+    // =========================================================================
+    const pfdCanvas = document.getElementById('pfd-canvas');
+    const pfdCtx = pfdCanvas.getContext('2d');
+
+    function drawPFD(rollDeg, pitchDeg) {
+      const w = pfdCanvas.width;
+      const h = pfdCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      pfdCtx.clearRect(0, 0, w, h);
+      pfdCtx.save();
+      pfdCtx.translate(cx, cy);
+      pfdCtx.rotate(-rollDeg * Math.PI / 180);
+
+      const pitchOffset = (pitchDeg || 0) * 1.4;
+      pfdCtx.fillStyle = '#0f2438';
+      pfdCtx.fillRect(-w, -h * 2 + pitchOffset, w * 2, h * 2);
+      pfdCtx.fillStyle = '#261b11';
+      pfdCtx.fillRect(-w, pitchOffset, w * 2, h * 2);
+
+      pfdCtx.strokeStyle = '#ffffff';
+      pfdCtx.lineWidth = 2;
+      pfdCtx.beginPath();
+      pfdCtx.moveTo(-w, pitchOffset);
+      pfdCtx.lineTo(w, pitchOffset);
+      pfdCtx.stroke();
+
+      pfdCtx.restore();
+
+      pfdCtx.strokeStyle = '#00f2fe';
+      pfdCtx.lineWidth = 2;
+      pfdCtx.beginPath();
+      pfdCtx.moveTo(cx - 25, cy);
+      pfdCtx.lineTo(cx - 8, cy);
+      pfdCtx.lineTo(cx, cy + 6);
+      pfdCtx.lineTo(cx + 8, cy);
+      pfdCtx.lineTo(cx + 25, cy);
+      pfdCtx.stroke();
+    }
+
+    // =========================================================================
+    // 10. CLIENTE WEBSOCKET & TELEMETRÍA
+    // =========================================================================
+    const WS_URL = "ws://127.0.0.1:8765";
+    let ws = null;
+
+    function connectWS() {
+      const wsPill = document.getElementById('ws-pill');
+      const wsText = document.getElementById('ws-text');
+
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        wsPill.classList.add('connected');
+        wsText.textContent = "WS: Conectado (50 Hz)";
+      };
+
+      ws.onclose = () => {
+        wsPill.classList.remove('connected');
+        wsText.textContent = "WS: Desconectado";
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "telemetry") {
+            handleTelemetry(msg);
+          } else if (msg.type === "status") {
+            handleStatus(msg);
+          } else if (msg.type === "save_calibration_ack") {
+            showToast("✓ Calibración guardada permanentemente en SQLite");
+            const calModal = document.getElementById('cal-modal');
+            if (calModal) calModal.style.display = 'none';
+          }
+        } catch (e) {}
+      };
+    }
+
+    let currentDeviceId = "MCL-0001";
+    let modalSampleSectors = new Uint8Array(128);
+    let modalCoveragePct = 0;
+
+    function handleStatus(msg) {
+      currentDeviceId = msg.device_id || 'MCL';
+      document.getElementById('dev-name').textContent = `DISP: ${currentDeviceId}`;
+      const calModalDev = document.getElementById('cal-modal-dev');
+      if (calModalDev) calModalDev.textContent = `DISPOSITIVO: ${currentDeviceId}`;
+
+      if (msg.calibration) {
+        const isCal = msg.calibration.is_calibrated;
+        const calDot = document.getElementById('cal-dot');
+        const calText = document.getElementById('cal-text');
+        if (calDot && calText) {
+          if (isCal) {
+            calDot.style.background = 'var(--accent-emerald)';
+            calDot.style.boxShadow = '0 0 10px var(--accent-emerald)';
+            calText.textContent = 'Calibrado (SQLite) ✓';
+          } else {
+            calDot.style.background = 'var(--accent-amber)';
+            calDot.style.boxShadow = '0 0 10px var(--accent-amber)';
+            calText.textContent = 'Sin Calibrar (Click)';
+          }
+        }
+      }
+    }
+
+    function handleTelemetry(data) {
+      if (demoMode) return;
+
+      const q = data.quaternion;
+      if (q && data.validity && data.validity.quat_valid) {
+        const qx = invertPitch ? -q.y : q.y;
+        const qy = invertYaw ? q.z : -q.z; // Invertido para que giro a la derecha sea derecha
+        const qz = invertRoll ? q.x : -q.x;
+        targetQuat.set(qx, qy, qz, q.w);
+        updateQuatHUD(q.w, q.x, q.y, q.z);
+      }
+
+      const ori = data.orientation || {};
+      const roll = invertRoll ? -(ori.roll_deg || 0) : (ori.roll_deg || 0);
+      const pitch = invertPitch ? -(ori.pitch_deg || 0) : (ori.pitch_deg || 0);
+      const yaw = invertYaw ? -(ori.yaw_rel_deg || 0) : (ori.yaw_rel_deg || 0);
+
+      document.getElementById('val-roll').textContent = roll.toFixed(1) + '°';
+      document.getElementById('val-pitch').textContent = pitch.toFixed(1) + '°';
+      document.getElementById('val-yaw').textContent = yaw.toFixed(1) + '°';
+
+      const magYaw = ori.yaw_mag_rel_deg;
+      const magDisplay = magYaw !== null && magYaw !== undefined ? (invertYaw ? -magYaw : magYaw) : null;
+      document.getElementById('mag-heading-txt').textContent = magDisplay !== null ? `MAG: ${magDisplay.toFixed(1)}°` : 'MAG: N/A';
+
+      drawPFD(roll, pitch);
+
+      // Si el modal de calibración está abierto, registrar sectores esféricos
+      const calModal = document.getElementById('cal-modal');
+      if (calModal && calModal.style.display === 'flex' && q) {
+        const normVec = new THREE.Vector3(0, 0, -1).applyQuaternion(new THREE.Quaternion(q.x, q.y, q.z, q.w));
+        const az = (Math.atan2(normVec.y, normVec.x) + Math.PI) / (Math.PI * 2);
+        const el = (Math.asin(THREE.MathUtils.clamp(normVec.z, -1, 1)) + Math.PI / 2) / Math.PI;
+        const sIdx = Math.floor(az * 16) * 8 + Math.floor(el * 8);
+        modalSampleSectors[sIdx] = 1;
+
+        let covered = 0;
+        for (let i = 0; i < 128; i++) if (modalSampleSectors[i]) covered++;
+        modalCoveragePct = (covered / 128.0) * 100.0;
+
+        document.getElementById('modal-cov-pct').textContent = `${modalCoveragePct.toFixed(1)}%`;
+        document.getElementById('modal-cov-bar').style.width = `${modalCoveragePct}%`;
+        if (modalCoveragePct >= 65.0) {
+          document.getElementById('btn-modal-save-cal').disabled = false;
+        }
+      }
+    }
+
+    function updateQuatHUD(w, x, y, z) {
+      document.getElementById('qval-w').textContent = w.toFixed(3);
+      document.getElementById('qval-x').textContent = x.toFixed(3);
+      document.getElementById('qval-y').textContent = y.toFixed(3);
+      document.getElementById('qval-z').textContent = z.toFixed(3);
+      document.getElementById('qbar-w').style.width = `${Math.abs(w) * 100}%`;
+      document.getElementById('qbar-x').style.width = `${Math.abs(x) * 100}%`;
+      document.getElementById('qbar-y').style.width = `${Math.abs(y) * 100}%`;
+      document.getElementById('qbar-z').style.width = `${Math.abs(z) * 100}%`;
+    }
+
+    // =========================================================================
+    // 11. CONTROLES DE INTERFAZ Y CONFIGURACIÓN
+    // =========================================================================
+    // Selector de Modo (Brazo 6-DOF vs Pivote Fijo)
+    document.getElementById('btn-mode-arm').addEventListener('click', function() {
+      this.classList.add('active');
+      document.getElementById('btn-mode-pivot').classList.remove('active');
+      armConfig.mode6DOF = true;
+    });
+
+    document.getElementById('btn-mode-pivot').addEventListener('click', function() {
+      this.classList.add('active');
+      document.getElementById('btn-mode-arm').classList.remove('active');
+      armConfig.mode6DOF = false;
+    });
+
+    // Selector de Objeto 3D
+    const modelButtons = [
+      { id: 'btn-model-racket', grp: racketGroup, sprayUI: false },
+      { id: 'btn-model-spray', grp: sprayGroup, sprayUI: true },
+      { id: 'btn-model-pcb', grp: pcbGroup, sprayUI: false },
+      { id: 'btn-model-controller', grp: controllerGroup, sprayUI: false }
+    ];
+
+    modelButtons.forEach(btn => {
+      document.getElementById(btn.id).addEventListener('click', () => {
+        modelButtons.forEach(b => {
+          document.getElementById(b.id).classList.remove('active');
+          if (b.grp) b.grp.visible = false;
+        });
+        document.getElementById(btn.id).classList.add('active');
+        if (btn.grp) btn.grp.visible = true;
+        document.getElementById('spray-controls-group').style.display = btn.sprayUI ? 'flex' : 'none';
+      });
+    });
+
+    // Slider longitud de brazo
+    const sliderArm = document.getElementById('slider-arm-len');
+    sliderArm.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      armConfig.totalArmLength = val / 100.0;
+      document.getElementById('lbl-arm-len').textContent = `${val} cm`;
+    });
+
+    // Diestro / Zurdo
+    document.getElementById('btn-hand-right').addEventListener('click', function() {
+      this.classList.add('active');
+      document.getElementById('btn-hand-left').classList.remove('active');
+      armConfig.isRightHand = true;
+    });
+
+    document.getElementById('btn-hand-left').addEventListener('click', function() {
+      this.classList.add('active');
+      document.getElementById('btn-hand-right').classList.remove('active');
+      armConfig.isRightHand = false;
+    });
+
+    // Conmutadores Toggle
+    function bindToggle(id, onToggle) {
+      const el = document.getElementById(id);
+      el.addEventListener('click', () => {
+        el.classList.toggle('on');
+        onToggle(el.classList.contains('on'));
+      });
+    }
+
+    bindToggle('toggle-skeleton', on => skeletonEnabled = on);
+    bindToggle('toggle-trail', on => trailEnabled = on);
+    bindToggle('toggle-wall', on => wallMesh.visible = on);
+    bindToggle('toggle-demo', on => {
+      demoMode = on;
+      showToast(demoMode ? "Modo Demo Activo (Swing Deportivo)" : "Modo En Vivo (Telemetría)");
+    });
+
+    bindToggle('toggle-inv-yaw', on => {
+      invertYaw = on;
+      showToast(on ? "Yaw invertido (Giro Z invertido)" : "Yaw estándar");
+    });
+    bindToggle('toggle-inv-pitch', on => {
+      invertPitch = on;
+      showToast(on ? "Pitch invertido (Cabeceo invertido)" : "Pitch estándar");
+    });
+    bindToggle('toggle-inv-roll', on => {
+      invertRoll = on;
+      showToast(on ? "Roll invertido (Alabeo invertido)" : "Roll estándar");
+    });
+
+    // Control de Orientación de Montaje IMU 3D
+    let activeMountYaw = 0.0;
+    let activeMountPitch = 0.0;
+    let activeMountRoll = 0.0;
+
+    function setMountingOrientation(yawDeg, pitchDeg = 0, rollDeg = 0) {
+      activeMountYaw = yawDeg;
+      activeMountPitch = pitchDeg;
+      activeMountRoll = rollDeg;
+      document.getElementById('lbl-active-mount').textContent = `${yawDeg.toFixed(0)}° (P:${pitchDeg.toFixed(0)}° R:${rollDeg.toFixed(0)}°)`;
+
+      // Sincronizar inputs numéricos si no están activos
+      const inY = document.getElementById('vis-input-mount-yaw');
+      const inP = document.getElementById('vis-input-mount-pitch');
+      const inR = document.getElementById('vis-input-mount-roll');
+      if (inY && inY !== document.activeElement) inY.value = yawDeg;
+      if (inP && inP !== document.activeElement) inP.value = pitchDeg;
+      if (inR && inR !== document.activeElement) inR.value = rollDeg;
+
+      ['btn-mount-0', 'btn-mount-90', 'btn-mount-minus90', 'btn-mount-180', 'btn-mount-roll90', 'btn-mount-pitch90'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+      if (yawDeg === 0 && pitchDeg === 0 && rollDeg === 0) document.getElementById('btn-mount-0')?.classList.add('active');
+      else if (yawDeg === 90 && pitchDeg === 0 && rollDeg === 0) document.getElementById('btn-mount-90')?.classList.add('active');
+      else if (yawDeg === -90 && pitchDeg === 0 && rollDeg === 0) document.getElementById('btn-mount-minus90')?.classList.add('active');
+      else if (yawDeg === 180 && pitchDeg === 0 && rollDeg === 0) document.getElementById('btn-mount-180')?.classList.add('active');
+      else if (yawDeg === 0 && pitchDeg === 0 && rollDeg === 90) document.getElementById('btn-mount-roll90')?.classList.add('active');
+      else if (yawDeg === 0 && pitchDeg === 90 && rollDeg === 0) document.getElementById('btn-mount-pitch90')?.classList.add('active');
+
+      showToast(`Orientación 3D: Yaw=${yawDeg}°, Pitch=${pitchDeg}°, Roll=${rollDeg}° sincronizado`);
+
+      // Guardar y sincronizar con Gateway SQLite y ESP32 BLE
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          command: "save_calibration",
+          device_id: currentDeviceId,
+          calibration: {
+            mount_yaw_deg: activeMountYaw,
+            mount_pitch_deg: activeMountPitch,
+            mount_roll_deg: activeMountRoll,
+            notes: `Montaje 3D fijado a Yaw=${activeMountYaw}°, Pitch=${activeMountPitch}°, Roll=${activeMountRoll}°`
+          }
+        }));
+      }
+    }
+
+    // Presets Rápidos 3D
+    document.getElementById('btn-mount-0')?.addEventListener('click', () => setMountingOrientation(0, 0, 0));
+    document.getElementById('btn-mount-90')?.addEventListener('click', () => setMountingOrientation(90, 0, 0));
+    document.getElementById('btn-mount-minus90')?.addEventListener('click', () => setMountingOrientation(-90, 0, 0));
+    document.getElementById('btn-mount-180')?.addEventListener('click', () => setMountingOrientation(180, 0, 0));
+    document.getElementById('btn-mount-roll90')?.addEventListener('click', () => setMountingOrientation(0, 0, 90));
+    document.getElementById('btn-mount-pitch90')?.addEventListener('click', () => setMountingOrientation(0, 90, 0));
+
+    // Inputs Numéricos Directos 3D
+    ['vis-input-mount-yaw', 'vis-input-mount-pitch', 'vis-input-mount-roll'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        const y = parseFloat(document.getElementById('vis-input-mount-yaw').value || 0);
+        const p = parseFloat(document.getElementById('vis-input-mount-pitch').value || 0);
+        const r = parseFloat(document.getElementById('vis-input-mount-roll').value || 0);
+        setMountingOrientation(y, p, r);
+      });
+    });
+
+    // Detección Automática de Orientación 3D (Estilo Drones 2 Gestos) en Visualizador 3D
+    let visAutoDetecting = false;
+    let visNeutralQuat = new THREE.Quaternion();
+
+    document.getElementById('btn-vis-auto-detect').addEventListener('click', function() {
+      if (visAutoDetecting) return;
+      visAutoDetecting = true;
+      const btn = this;
+      btn.disabled = true;
+
+      const panel = document.getElementById('vis-detect-panel');
+      const msg = document.getElementById('vis-detect-step-msg');
+      const pBar = document.getElementById('vis-detect-progress-bar');
+      const res = document.getElementById('vis-detect-result');
+
+      if (panel) panel.style.display = 'flex';
+      if (res) res.textContent = '';
+      if (pBar) pBar.style.width = '0%';
+
+      // Paso 1: Neutral (2s)
+      if (msg) msg.textContent = '1/2: Coloca el control plano en reposo (mide gravedad -> Pitch y Roll)...';
+      btn.textContent = "1/2: Midiendo reposo plano...";
+
+      let prog1 = 0;
+      const t1 = setInterval(() => {
+        prog1 += 5;
+        if (pBar) pBar.style.width = `${prog1}%`;
+
+        if (prog1 >= 100) {
+          clearInterval(t1);
+          visNeutralQuat.copy(targetQuat);
+
+          // Vector de gravedad en el sensor
+          const uz = new THREE.Vector3(
+            2 * (visNeutralQuat.x * visNeutralQuat.z - visNeutralQuat.w * visNeutralQuat.y),
+            2 * (visNeutralQuat.y * visNeutralQuat.z + visNeutralQuat.w * visNeutralQuat.x),
+            visNeutralQuat.w * visNeutralQuat.w - visNeutralQuat.x * visNeutralQuat.x - visNeutralQuat.y * visNeutralQuat.y + visNeutralQuat.z * visNeutralQuat.z
+          ).normalize();
+
+          // Paso 2: Inclinación frontal
+          if (msg) msg.textContent = '2/2: ¡Inclina el control hacia el frente ahora (cabeceo hacia abajo)!';
+          btn.textContent = "2/2: Inclina hacia el frente...";
+          if (pBar) pBar.style.width = '0%';
+
+          let maxDeltaMag = 0;
+          let bestRotAxis = new THREE.Vector3(0, 1, 0);
+          let prog2 = 0;
+
+          const t2 = setInterval(() => {
+            prog2 += 5;
+            if (pBar) pBar.style.width = `${prog2}%`;
+
+            const deltaQ = new THREE.Quaternion().copy(visNeutralQuat).invert().multiply(targetQuat);
+            const vAxis = new THREE.Vector3(deltaQ.x, deltaQ.y, deltaQ.z);
+            const mag = vAxis.length();
+
+            if (mag > maxDeltaMag) {
+              maxDeltaMag = mag;
+              bestRotAxis.copy(vAxis).normalize();
+            }
+
+            if (prog2 >= 100) {
+              clearInterval(t2);
+              visAutoDetecting = false;
+              btn.disabled = false;
+              btn.textContent = "🎯 Detectar con 2 Gestos (Drone)";
+
+              if (maxDeltaMag < 0.04) {
+                bestRotAxis.set(0, 1, 0);
+              }
+
+              // Ortogonalizar eje de cabeceo uy respecto a uz
+              const dot = bestRotAxis.dot(uz);
+              const uy = new THREE.Vector3().copy(bestRotAxis).sub(new THREE.Vector3().copy(uz).multiplyScalar(dot)).normalize();
+              const ux = new THREE.Vector3().crossVectors(uy, uz).normalize();
+
+              // Matriz de rotación R con filas ux, uy, uz
+              const R = new THREE.Matrix4();
+              R.set(
+                ux.x, ux.y, ux.z, 0,
+                uy.x, uy.y, uy.z, 0,
+                uz.x, uz.y, uz.z, 0,
+                0,    0,    0,    1
+              );
+
+              const euler = new THREE.Euler().setFromRotationMatrix(R, 'ZYX');
+              let rawYaw = THREE.MathUtils.radToDeg(euler.z);
+              let rawPitch = THREE.MathUtils.radToDeg(euler.y);
+              let rawRoll = THREE.MathUtils.radToDeg(euler.x);
+
+              function snap(deg) {
+                for (let target of [-180, -90, 0, 90, 180]) {
+                  if (Math.abs(deg - target) < 22) return target;
+                }
+                return Math.round(deg);
+              }
+
+              const snappedYaw = snap(rawYaw);
+              const snappedPitch = snap(rawPitch);
+              const snappedRoll = snap(rawRoll);
+
+              setMountingOrientation(snappedYaw, snappedPitch, snappedRoll);
+              if (msg) msg.innerHTML = `✓ ¡Detección 3D Completa!`;
+              if (res) res.innerHTML = `Yaw: <b style="color:var(--accent-cyan);">${snappedYaw}°</b> | Pitch: <b style="color:var(--accent-amber);">${snappedPitch}°</b> | Roll: <b style="color:var(--accent-emerald);">${snappedRoll}°</b>`;
+              showToast(`🎯 ¡Detectado: Yaw=${snappedYaw}°, Pitch=${snappedPitch}°, Roll=${snappedRoll}°!`);
+            }
+          }, 100);
+        }
+      }, 100);
+    });
+
+
+
+    // Control del Modal de Calibración SQLite
+    const calModalEl = document.getElementById('cal-modal');
+    document.getElementById('btn-open-cal-modal').addEventListener('click', () => {
+      calModalEl.style.display = 'flex';
+      modalSampleSectors.fill(0);
+      modalCoveragePct = 0;
+      document.getElementById('modal-cov-pct').textContent = '0.0%';
+      document.getElementById('modal-cov-bar').style.width = '0%';
+      document.getElementById('btn-modal-save-cal').disabled = true;
+    });
+
+    document.getElementById('btn-close-cal-modal').addEventListener('click', () => {
+      calModalEl.style.display = 'none';
+    });
+
+    document.getElementById('btn-modal-save-cal').addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          command: "save_calibration",
+          device_id: currentDeviceId,
+          calibration: {
+            device_name: currentDeviceId,
+            mag_coverage_pct: modalCoveragePct,
+            is_valid: true,
+            notes: "Calibrado mediante modal integrado 3D"
+          }
+        }));
+      }
+    });
+
+    // =========================================================================
+    // 12. BUCLE DE RENDERIZADO Y FÍSICA (60+ FPS)
+    // =========================================================================
+    const activeDisplayQuat = new THREE.Quaternion();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      // Si está en modo demo, simular un golpe deportivo (swing de raqueta / spray)
+      if (demoMode) {
+        demoClock += 0.035;
+        // Trayectoria de swing en arco elíptico
+        const swingPhase = Math.sin(demoClock);
+        const euler = new THREE.Euler(
+          Math.sin(demoClock * 1.5) * 0.45,
+          swingPhase * 1.25,
+          Math.cos(demoClock * 1.5) * 0.35,
+          'YXZ'
+        );
+        targetQuat.setFromEuler(euler);
+
+        const degR = THREE.MathUtils.radToDeg(euler.x);
+        const degP = THREE.MathUtils.radToDeg(euler.z);
+        const degY = THREE.MathUtils.radToDeg(euler.y);
+        document.getElementById('val-roll').textContent = degR.toFixed(1) + '°';
+        document.getElementById('val-pitch').textContent = degP.toFixed(1) + '°';
+        document.getElementById('val-yaw').textContent = degY.toFixed(1) + '°';
+        drawPFD(degR, degP);
+      }
+
+      // Aplicar Tare y Slerp
+      if (tareActive) {
+        activeDisplayQuat.multiplyQuaternions(tareQuat, targetQuat);
+      } else {
+        activeDisplayQuat.copy(targetQuat);
+      }
+
+      // 1. Resolver cinemática de brazo 6-DOF y actualizar esqueleto
+      const handPos = updateArmKinematics(activeDisplayQuat);
+
+      // 2. Calcular posición de la punta de la herramienta para tracking de velocidad
+      const toolTipOffset = new THREE.Vector3(0, 0, racketGroup.visible ? -0.8 : -0.35);
+      const tipWorldPos = toolTipOffset.applyQuaternion(toolRoot.quaternion).add(toolRoot.position);
+
+      // 3. Actualizar cinemática de velocidad y velocímetro
+      updateVelocityTracking(tipWorldPos, now);
+
+      // 4. Actualizar cinta de estela (Motion Trail)
+      updateMotionTrail(tipWorldPos);
+
+      // 5. Grafiti Virtual si el bote está rociando
+      if (isSpraying && sprayGroup.visible) {
+        sprayConeMat.opacity = 0.55;
+        const forwardVector = new THREE.Vector3(0, 0, -1).applyQuaternion(toolRoot.quaternion);
+        sprayAtWall(tipWorldPos, forwardVector);
+      } else {
+        sprayConeMat.opacity = 0.0;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    connectWS();
+    animate(0);
+  </script>
+</body>
+</html>

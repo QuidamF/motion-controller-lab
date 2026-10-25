@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Controller Lab — Cliente de Diagnóstico</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #238636;
+      --green-light: #3fb950;
+      --red: #da3633;
+      --red-light: #f85149;
+      --yellow: #d29922;
+      --blue: #1f6feb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; font-size: 14px; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; }
+    h1 { font-size: 1.4rem; color: #f0f6fc; display: flex; align-items: center; gap: 10px; }
+    .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+    .badge-conn { background: var(--green); color: white; }
+    .badge-disc { background: var(--red); color: white; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .card h2 { font-size: 1rem; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; }
+    .metric-label { color: var(--text-muted); }
+    .metric-val { font-weight: 600; font-family: "Cascadia Code", Consolas, monospace; }
+    .val-highlight { color: #f0f6fc; font-size: 1.1rem; }
+    .val-null { color: var(--red-light); font-style: italic; }
+    .flags-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .flag-pill { padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-align: center; background: #21262d; color: var(--text-muted); border: 1px solid var(--border); }
+    .flag-pill.active { background: #1f3d24; color: var(--green-light); border-color: var(--green); }
+    .flag-pill.inactive { background: #3d1f1f; color: var(--red-light); border-color: var(--red); }
+    .compass-container { display: flex; justify-content: space-around; align-items: center; padding: 15px 0; }
+    .dial { width: 100px; height: 100px; border-radius: 50%; border: 2px solid var(--border); position: relative; background: #0e1217; display: flex; align-items: center; justify-content: center; }
+    .needle { width: 2px; height: 42px; background: var(--accent); position: absolute; top: 8px; left: 49px; transform-origin: bottom center; will-change: transform; }
+    .needle.needle-mag { background: var(--yellow); }
+    .dial-label { font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px; }
+    .footer { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 30px; border-top: 1px solid var(--border); padding-top: 15px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Motion Controller Lab <span style="font-size:0.9rem; color:var(--text-muted);">| Diagnóstico</span></h1>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span id="ws-status" class="badge badge-disc">WS Desconectado</span>
+      <span id="ble-status" class="badge badge-disc">Dispositivo: N/A</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- Orientación en Tiempo Real -->
+    <div class="card">
+      <h2>Orientación Euler (ZYX)</h2>
+      <div class="metric-row">
+        <span class="metric-label">Roll (X)</span>
+        <span id="val-roll" class="metric-val val-highlight">0.00°</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Pitch (Y)</span>
+        <span id="val-pitch" class="metric-val val-highlight">0.00°</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Yaw Relativo Inercial (Z)</span>
+        <span id="val-yaw" class="metric-val val-highlight">0.00°</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Yaw Magnético Relativo</span>
+        <span id="val-mag" class="metric-val val-highlight">0.00°</span>
+      </div>
+
+      <div class="compass-container">
+        <div>
+          <div class="dial"><div id="needle-yaw" class="needle"></div></div>
+          <div class="dial-label">Yaw Inercial</div>
+        </div>
+        <div>
+          <div class="dial"><div id="needle-mag" class="needle needle-mag"></div></div>
+          <div class="dial-label">Yaw Magnético</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cuaternión y Paquete -->
+    <div class="card">
+      <h2>Cuaternión Absoluto y Secuencia</h2>
+      <div class="metric-row">
+        <span class="metric-label">Secuencia (monótona / raw)</span>
+        <span id="val-seq" class="metric-val">0 / 0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Timestamp Sensor</span>
+        <span id="val-ts" class="metric-val">0 ms</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Cuaternión (w, x, y, z)</span>
+        <span id="val-quat" class="metric-val">1.000, 0.000, 0.000, 0.000</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Jitter / Retraso observable</span>
+        <span id="val-jitter" class="metric-val">0.00 ms</span>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <span class="metric-label" style="font-size:12px;">Banderas de Validez:</span>
+        <div class="flags-grid">
+          <div id="flag-ref" class="flag-pill">REF CAPTURADA</div>
+          <div id="flag-euler" class="flag-pill">EULER FINITO</div>
+          <div id="flag-quat" class="flag-pill">QUAT VÁLIDO</div>
+          <div id="flag-mag-rdy" class="flag-pill">MAG LISTO</div>
+          <div id="flag-mag-cov" class="flag-pill">MAG COBERTURA</div>
+          <div id="flag-mag-cal" class="flag-pill">MAG CALIBRADO</div>
+          <div id="flag-mag-valid" class="flag-pill" style="grid-column: span 2;">HEADING MAG VÁLIDO</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetría y Salud del Enlace -->
+    <div class="card">
+      <h2>Estadísticas de Enlace</h2>
+      <div class="metric-row">
+        <span class="metric-label">Tasa de Muestreo</span>
+        <span id="val-rate" class="metric-val val-highlight" style="color:var(--green-light);">0.0 Hz</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Muestras Recibidas</span>
+        <span id="val-recv" class="metric-val">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Muestras Perdidas</span>
+        <span id="val-lost" class="metric-val">0 (0.0%)</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Duplicados / Desorden</span>
+        <span id="val-dups" class="metric-val">0 / 0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Reinicios detectados</span>
+        <span id="val-resets" class="metric-val">0</span>
+      </div>
+    </div>
+
+    <!-- Estado del Hardware ESP32 -->
+    <div class="card">
+      <h2>Diagnóstico del Dispositivo</h2>
+      <div class="metric-row">
+        <span class="metric-label">Fase del Firmware</span>
+        <span id="val-phase" class="metric-val" style="color:var(--accent);">desconocida</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Errores I2C</span>
+        <span id="val-i2c-err" class="metric-val">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Errores Magnetómetro</span>
+        <span id="val-mag-err" class="metric-val">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Sobrecargas de Ciclo (Overruns)</span>
+        <span id="val-overruns" class="metric-val">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Descartes Notify BLE</span>
+        <span id="val-drops" class="metric-val">0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Motion Controller Lab — Conexión directa a <code>ws://127.0.0.1:8765</code>. Herramienta de verificación de telemetría sin acoplamiento a motores gráficos.
+  </div>
+
+  <script>
+    const WS_URL = "ws://127.0.0.1:8765";
+    let ws = null;
+
+    function connect() {
+      const wsStatus = document.getElementById("ws-status");
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        wsStatus.textContent = "WS Conectado";
+        wsStatus.className = "badge badge-conn";
+      };
+
+      ws.onclose = () => {
+        wsStatus.textContent = "WS Desconectado";
+        wsStatus.className = "badge badge-disc";
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "telemetry") {
+            handleTelemetry(msg);
+          } else if (msg.type === "status") {
+            handleStatus(msg);
+          }
+        } catch (err) {
+          console.error("Error parseando mensaje WS:", err);
+        }
+      };
+    }
+
+    function setFlag(id, active) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = "flag-pill " + (active ? "active" : "inactive");
+    }
+
+    const needleState = {
+      yaw: 0,
+      mag: 0,
+      initYaw: false,
+      initMag: false
+    };
+
+    function updateNeedle(elemId, targetDeg, isMag) {
+      if (targetDeg === null || isNaN(targetDeg)) return;
+      const key = isMag ? "mag" : "yaw";
+      const initKey = isMag ? "initMag" : "initYaw";
+      if (!needleState[initKey]) {
+        needleState[key] = targetDeg;
+        needleState[initKey] = true;
+      } else {
+        // Delta angular más corto (-180° a +180°) para evitar giros inversos de 360° al cruzar el límite
+        let diff = (targetDeg - (needleState[key] % 360) + 540) % 360 - 180;
+        needleState[key] += diff;
+      }
+      const el = document.getElementById(elemId);
+      if (el) el.style.transform = `rotate(${needleState[key]}deg)`;
+    }
+
+    function handleTelemetry(data) {
+      const ori = data.orientation || {};
+      const valRoll = document.getElementById("val-roll");
+      const valPitch = document.getElementById("val-pitch");
+      const valYaw = document.getElementById("val-yaw");
+      const valMag = document.getElementById("val-mag");
+
+      valRoll.textContent = ori.roll_deg !== null ? ori.roll_deg.toFixed(2) + "°" : "INVALID";
+      valPitch.textContent = ori.pitch_deg !== null ? ori.pitch_deg.toFixed(2) + "°" : "INVALID";
+      valYaw.textContent = ori.yaw_rel_deg !== null ? ori.yaw_rel_deg.toFixed(2) + "°" : "INVALID";
+
+      if (ori.yaw_mag_rel_deg !== null) {
+        valMag.textContent = ori.yaw_mag_rel_deg.toFixed(2) + "°";
+        valMag.className = "metric-val val-highlight";
+      } else {
+        valMag.textContent = "INVÁLIDO (null)";
+        valMag.className = "metric-val val-null";
+      }
+
+      // Rotación suave continua de las brújulas sin salto de 360 grados
+      updateNeedle("needle-yaw", ori.yaw_rel_deg, false);
+      updateNeedle("needle-mag", ori.yaw_mag_rel_deg, true);
+
+      // Sequence & timestamp
+      document.getElementById("val-seq").textContent = `${data.sequence} / ${data.sequence_raw}`;
+      document.getElementById("val-ts").textContent = `${data.timestamp_ms} ms`;
+      document.getElementById("val-jitter").textContent = `${data.extra_delay_ms.toFixed(2)} ms`;
+
+      // Quaternion
+      const q = data.quaternion;
+      if (q) {
+        document.getElementById("val-quat").textContent = `${q.w.toFixed(3)}, ${q.x.toFixed(3)}, ${q.y.toFixed(3)}, ${q.z.toFixed(3)}`;
+      } else {
+        document.getElementById("val-quat").textContent = "N/A";
+      }
+
+      // Validity flags
+      const v = data.validity || {};
+      setFlag("flag-ref", v.reference_captured);
+      setFlag("flag-euler", v.euler_finite);
+      setFlag("flag-quat", v.quat_valid);
+      setFlag("flag-mag-rdy", v.mag_data_ready);
+      setFlag("flag-mag-cov", v.mag_coverage_valid);
+      setFlag("flag-mag-cal", v.mag_calibrated);
+      setFlag("flag-mag-valid", v.yaw_mag_valid);
+    }
+
+    function handleStatus(data) {
+      const g = data.gateway || {};
+      const bleStatus = document.getElementById("ble-status");
+      if (g.connection === "connected") {
+        bleStatus.textContent = `${data.device_id} [${g.mode}]`;
+        bleStatus.className = "badge badge-conn";
+      } else {
+        bleStatus.textContent = `Desconectado [${g.mode}]`;
+        bleStatus.className = "badge badge-disc";
+      }
+
+      const s = data.stats || {};
+      document.getElementById("val-rate").textContent = `${s.rate_hz !== undefined ? s.rate_hz.toFixed(1) : 0.0} Hz`;
+      document.getElementById("val-recv").textContent = s.received || 0;
+      const lossPct = (s.loss_ratio ? s.loss_ratio * 100 : 0).toFixed(2);
+      document.getElementById("val-lost").textContent = `${s.lost || 0} (${lossPct}%)`;
+      document.getElementById("val-dups").textContent = `${s.duplicates || 0} / ${s.reordered || 0}`;
+      document.getElementById("val-resets").textContent = s.device_resets || 0;
+
+      const dev = s.device || {};
+      document.getElementById("val-phase").textContent = dev.phase || "desconocida";
+      document.getElementById("val-i2c-err").textContent = dev.i2c_errors || 0;
+      document.getElementById("val-mag-err").textContent = dev.mag_errors || 0;
+      document.getElementById("val-overruns").textContent = dev.loop_overruns || 0;
+      document.getElementById("val-drops").textContent = dev.notify_drops || 0;
+    }
+
+    window.onload = connect;
+  </script>
+</body>
+</html>
